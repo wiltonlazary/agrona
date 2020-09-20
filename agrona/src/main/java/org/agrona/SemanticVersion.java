@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019 Real Logic Ltd.
+ *  Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,12 @@ package org.agrona;
 /**
  * Store and extract a semantic version in a 4 byte integer.
  */
-public class SemanticVersion
+public final class SemanticVersion
 {
+    private SemanticVersion()
+    {
+    }
+
     /**
      * Compose a 4-byte integer with major, minor, and patch version stored in the least significant 3 bytes.
      * The sum of the components must be greater than zero.

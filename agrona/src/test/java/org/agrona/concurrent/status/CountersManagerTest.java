@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,29 +15,27 @@
  */
 package org.agrona.concurrent.status;
 
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.agrona.collections.IntObjConsumer;
 import org.agrona.concurrent.UnsafeBuffer;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
-import org.agrona.DirectBuffer;
-import org.agrona.collections.IntObjConsumer;
 
 import java.nio.ByteBuffer;
 
-import static java.nio.ByteBuffer.allocateDirect;
+import static java.nio.ByteBuffer.allocate;
 import static java.nio.charset.StandardCharsets.US_ASCII;
-import static org.agrona.concurrent.status.CountersReader.MAX_LABEL_LENGTH;
+import static org.agrona.concurrent.status.CountersReader.*;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.agrona.concurrent.status.CountersReader.COUNTER_LENGTH;
-import static org.agrona.concurrent.status.CountersReader.METADATA_LENGTH;
 
 public class CountersManagerTest
 {
@@ -46,12 +44,12 @@ public class CountersManagerTest
 
     private long currentTimestamp = 0;
 
-    private final UnsafeBuffer labelsBuffer = new UnsafeBuffer(allocateDirect(NUMBER_OF_COUNTERS * METADATA_LENGTH));
-    private final UnsafeBuffer counterBuffer = new UnsafeBuffer(allocateDirect(NUMBER_OF_COUNTERS * COUNTER_LENGTH));
-    private final CountersManager manager = new CountersManager(labelsBuffer, counterBuffer, US_ASCII);
-    private final CountersReader reader = new CountersManager(labelsBuffer, counterBuffer, US_ASCII);
-    private final CountersManager managerWithCooldown =
-        new CountersManager(labelsBuffer, counterBuffer, US_ASCII, () -> currentTimestamp, FREE_TO_REUSE_TIMEOUT);
+    private final UnsafeBuffer metadataBuffer = new UnsafeBuffer(allocate(NUMBER_OF_COUNTERS * METADATA_LENGTH));
+    private final UnsafeBuffer valuesBuffer = new UnsafeBuffer(allocate(NUMBER_OF_COUNTERS * COUNTER_LENGTH));
+    private final CountersManager manager = new CountersManager(metadataBuffer, valuesBuffer, US_ASCII);
+    private final CountersReader reader = new CountersManager(metadataBuffer, valuesBuffer, US_ASCII);
+    private final CountersManager managerWithCooldown = new CountersManager(
+        metadataBuffer, valuesBuffer, US_ASCII, () -> currentTimestamp, FREE_TO_REUSE_TIMEOUT);
 
     @SuppressWarnings("unchecked")
     private final IntObjConsumer<String> consumer = mock(IntObjConsumer.class);
@@ -84,7 +82,7 @@ public class CountersManagerTest
         {
             manager.allocate(
                 "label",
-                CountersManager.DEFAULT_TYPE_ID,
+                DEFAULT_TYPE_ID,
                 (buffer) ->
                 {
                     throw ex;
@@ -109,6 +107,93 @@ public class CountersManagerTest
         final int counterId = manager.allocate("abc");
         reader.forEach(consumer);
         verify(consumer).accept(counterId, "abc");
+    }
+
+    @Test
+    public void shouldSetRegistrationId()
+    {
+        final int counterId = manager.allocate("abc");
+        assertEquals(DEFAULT_REGISTRATION_ID, reader.getCounterRegistrationId(counterId));
+
+        final long registrationId = 777L;
+        manager.setCounterRegistrationId(counterId, registrationId);
+        assertEquals(registrationId, reader.getCounterRegistrationId(counterId));
+    }
+
+    @Test
+    public void shouldResetValueAndRegistrationIdIfReused()
+    {
+        final int counterIdOne = manager.allocate("abc");
+        assertEquals(DEFAULT_REGISTRATION_ID, reader.getCounterRegistrationId(counterIdOne));
+
+        final long registrationIdOne = 777L;
+        manager.setCounterRegistrationId(counterIdOne, registrationIdOne);
+
+        manager.free(counterIdOne);
+        final int counterIdTwo = manager.allocate("def");
+        assertEquals(counterIdOne, counterIdTwo);
+        assertEquals(DEFAULT_REGISTRATION_ID, reader.getCounterRegistrationId(counterIdTwo));
+
+        final long registrationIdTwo = 333L;
+        manager.setCounterRegistrationId(counterIdTwo, registrationIdTwo);
+        assertEquals(registrationIdTwo, reader.getCounterRegistrationId(counterIdTwo));
+    }
+
+    @Test
+    public void shouldSetOwnerId()
+    {
+        final int counterId = manager.allocate("abc");
+        assertEquals(DEFAULT_OWNER_ID, reader.getCounterOwnerId(counterId));
+
+        final long ownerId = 444L;
+        manager.setCounterOwnerId(counterId, ownerId);
+        assertEquals(ownerId, reader.getCounterOwnerId(counterId));
+    }
+
+    @Test
+    public void shouldResetValueAndOwnerIdIfReused()
+    {
+        final int counterIdOne = manager.allocate("abc");
+        assertEquals(DEFAULT_OWNER_ID, reader.getCounterOwnerId(counterIdOne));
+
+        final long ownerIdOne = 444L;
+        manager.setCounterOwnerId(counterIdOne, ownerIdOne);
+
+        manager.free(counterIdOne);
+        final int counterIdTwo = manager.allocate("def");
+        assertEquals(counterIdOne, counterIdTwo);
+        assertEquals(DEFAULT_OWNER_ID, reader.getCounterOwnerId(counterIdTwo));
+
+        final long ownerIdTwo = 222L;
+        manager.setCounterOwnerId(counterIdTwo, ownerIdTwo);
+        assertEquals(ownerIdTwo, reader.getCounterOwnerId(counterIdTwo));
+    }
+
+    @Test
+    public void shouldFindByRegistrationId()
+    {
+        final long registrationId = 777L;
+        manager.allocate("null");
+        final int counterId = manager.allocate("abc");
+        manager.setCounterRegistrationId(counterId, registrationId);
+
+        assertEquals(NULL_COUNTER_ID, manager.findByRegistrationId(1));
+        assertEquals(counterId, manager.findByRegistrationId(registrationId));
+    }
+
+    @Test
+    public void shouldFindByTypeIdAndRegistrationId()
+    {
+        final long registrationId = 777L;
+        final int typeId = 666;
+        manager.allocate("null");
+        final int counterId = manager.allocate("abc", typeId);
+        manager.setCounterRegistrationId(counterId, registrationId);
+
+        assertEquals(NULL_COUNTER_ID, manager.findByRegistrationId(1));
+        assertEquals(NULL_COUNTER_ID, manager.findByTypeIdAndRegistrationId(DEFAULT_TYPE_ID, registrationId));
+        assertEquals(NULL_COUNTER_ID, manager.findByTypeIdAndRegistrationId(typeId, 0));
+        assertEquals(counterId, manager.findByTypeIdAndRegistrationId(typeId, registrationId));
     }
 
     @Test
@@ -172,14 +257,15 @@ public class CountersManagerTest
         assertThat(managerWithCooldown.allocate("the next label"), is(def));
     }
 
-    @Test(expected = IllegalStateException.class)
+    @Test
     public void shouldNotOverAllocateCounters()
     {
         manager.allocate("abc");
         manager.allocate("def");
         manager.allocate("ghi");
         manager.allocate("jkl");
-        manager.allocate("mno");
+
+        assertThrows(IllegalStateException.class, () -> manager.allocate("mno"));
     }
 
     @Test
@@ -188,8 +274,8 @@ public class CountersManagerTest
         manager.allocate("def");
 
         final int id = manager.allocate("abc");
-        final ReadablePosition reader = new UnsafeBufferPosition(counterBuffer, id);
-        final Position writer = new UnsafeBufferPosition(counterBuffer, id);
+        final ReadablePosition reader = new UnsafeBufferPosition(valuesBuffer, id);
+        final Position writer = new UnsafeBufferPosition(valuesBuffer, id);
         final long expectedValue = 0xF_FFFF_FFFFL;
 
         writer.setOrdered(expectedValue);
@@ -224,6 +310,9 @@ public class CountersManagerTest
 
         final DirectBuffer keyTwoBuffer = argCaptorTwo.getValue();
         assertThat(keyTwoBuffer.getLong(0), is(keyTwo));
+
+        assertEquals(typeIdOne, manager.getCounterTypeId(counterIdOne));
+        assertEquals(typeIdTwo, manager.getCounterTypeId(counterIdTwo));
     }
 
     @Test
@@ -273,5 +362,109 @@ public class CountersManagerTest
         manager.setCounterValue(counterId, value);
 
         assertThat(manager.getCounterValue(counterId), is(value));
+    }
+
+    @Test
+    public void shouldGetAndUpdateCounterLabel()
+    {
+        final AtomicCounter counter = manager.newCounter("original label");
+
+        assertThat(counter.label(), is("original label"));
+        counter.updateLabel(counter.label() + " with update");
+        assertThat(counter.label(), is("original label with update"));
+    }
+
+    @Test
+    public void shouldGetAndUpdateCounterKeyUsingCallback()
+    {
+        final String originalKey = "original key";
+        final String updatedKey = "updated key";
+
+        final AtomicCounter counter = manager.newCounter(
+            "label", 101, (keyBuffer) -> keyBuffer.putStringUtf8(0, originalKey));
+
+        final StringKeyExtractor keyExtractor = new StringKeyExtractor(counter.id());
+
+        manager.forEach(keyExtractor);
+        assertThat(keyExtractor.key, is(originalKey));
+
+        manager.setCounterKey(counter.id(), (keyBuffer) -> keyBuffer.putStringUtf8(0, updatedKey));
+
+        manager.forEach(keyExtractor);
+        assertThat(keyExtractor.key, is(updatedKey));
+    }
+
+    @Test
+    public void shouldGetAndUpdateCounterKey()
+    {
+        final String originalKey = "original key";
+        final String updatedKey = "updated key";
+
+        final AtomicCounter counter = manager.newCounter(
+            "label", 101, (keyBuffer) -> keyBuffer.putStringUtf8(0, originalKey));
+
+        final StringKeyExtractor keyExtractor = new StringKeyExtractor(counter.id());
+
+        manager.forEach(keyExtractor);
+
+        assertThat(keyExtractor.key, is(originalKey));
+
+        final UnsafeBuffer tempBuffer = new UnsafeBuffer(new byte[128]);
+        final int length = tempBuffer.putStringUtf8(0, updatedKey);
+
+        manager.setCounterKey(counter.id(), tempBuffer, 0, length);
+
+        manager.forEach(keyExtractor);
+        assertThat(keyExtractor.key, is(updatedKey));
+    }
+
+    @Test
+    public void shouldRejectOversizeKeys()
+    {
+        final String originalKey = "original key";
+
+        final AtomicCounter counter = manager.newCounter(
+            "label", 101, (keyBuffer) -> keyBuffer.putStringUtf8(0, originalKey));
+
+        final UnsafeBuffer tempBuffer = new UnsafeBuffer(new byte[256]);
+
+        try
+        {
+            manager.setCounterKey(counter.id(), tempBuffer, 0, MAX_KEY_LENGTH + 1);
+            fail("Should have thrown exception");
+        }
+        catch (final IllegalArgumentException e)
+        {
+            assertTrue(true);
+        }
+    }
+
+    private static final class StringKeyExtractor implements MetaData
+    {
+        private final int id;
+        private String key;
+
+        private StringKeyExtractor(final int id)
+        {
+            this.id = id;
+        }
+
+        public void accept(final int counterId, final int typeId, final DirectBuffer keyBuffer, final String label)
+        {
+            if (counterId == id)
+            {
+                key = keyBuffer.getStringUtf8(0);
+            }
+        }
+    }
+
+    @Test
+    public void shouldAppendLabel()
+    {
+        final AtomicCounter counter = manager.newCounter("original label");
+
+        assertThat(counter.label(), is("original label"));
+        counter.appendToLabel(" with update");
+        assertThat(counter.label(), is("original label with update"));
     }
 }

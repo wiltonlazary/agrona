@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -719,7 +719,6 @@ public class Int2ObjectCache<V>
         public V next()
         {
             findNext();
-
             return (V)values[position()];
         }
     }
@@ -734,12 +733,10 @@ public class Int2ObjectCache<V>
         public int nextInt()
         {
             findNext();
-
             return keys[position()];
         }
     }
 
-    @SuppressWarnings("unchecked")
     public final class EntryIterator
         extends AbstractIterator<Entry<Integer, V>>
         implements Entry<Integer, V>
@@ -761,6 +758,7 @@ public class Int2ObjectCache<V>
             return keys[position()];
         }
 
+        @SuppressWarnings("unchecked")
         public V getValue()
         {
             return (V)values[position()];

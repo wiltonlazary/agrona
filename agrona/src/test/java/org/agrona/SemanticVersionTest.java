@@ -1,5 +1,5 @@
 /*
- *  Copyright 2019 Real Logic Ltd.
+ *  Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,10 @@
  */
 package org.agrona;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class SemanticVersionTest
 {
@@ -35,46 +36,46 @@ public class SemanticVersionTest
         assertEquals(patch, SemanticVersion.patch(version));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldDetectNegativeMajor()
     {
-        SemanticVersion.compose(-1, 1, 1);
+        assertThrows(IllegalArgumentException.class, () -> SemanticVersion.compose(-1, 1, 1));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldDetectNegativeMinor()
     {
-        SemanticVersion.compose(1, -1, 1);
+        assertThrows(IllegalArgumentException.class, () -> SemanticVersion.compose(1, -1, 1));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldDetectNegativePatch()
     {
-        SemanticVersion.compose(1, 1, -1);
+        assertThrows(IllegalArgumentException.class, () -> SemanticVersion.compose(1, 1, -1));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldDetectZeroVersion()
     {
-        SemanticVersion.compose(0, 0, 0);
+        assertThrows(IllegalArgumentException.class, () -> SemanticVersion.compose(0, 0, 0));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldDetectExcessiveMajor()
     {
-        SemanticVersion.compose(256, 1, 1);
+        assertThrows(IllegalArgumentException.class, () -> SemanticVersion.compose(256, 1, 1));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldDetectExcessiveMinor()
     {
-        SemanticVersion.compose(1, 256, 1);
+        assertThrows(IllegalArgumentException.class, () -> SemanticVersion.compose(1, 256, 1));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldDetectExcessivePatch()
     {
-        SemanticVersion.compose(1, 1, 256);
+        assertThrows(IllegalArgumentException.class, () -> SemanticVersion.compose(1, 1, 256));
     }
 
     @Test

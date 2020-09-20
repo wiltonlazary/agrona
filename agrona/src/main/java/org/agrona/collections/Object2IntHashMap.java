@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -210,6 +210,12 @@ public class Object2IntHashMap<K>
         return containsValue(((Integer)value).intValue());
     }
 
+    /**
+     * Overloaded version to avoid boxing.
+     *
+     * @param value to check.
+     * @return true if the collection contains the value.
+     */
     public boolean containsValue(final int value)
     {
         if (value == missingValue)
@@ -236,7 +242,7 @@ public class Object2IntHashMap<K>
     @SuppressWarnings("unchecked")
     public Integer get(final Object key)
     {
-        return valOrNull(getValue((K)key));
+        return valueOrNull(getValue((K)key));
     }
 
     /**
@@ -295,7 +301,7 @@ public class Object2IntHashMap<K>
      */
     public Integer put(final K key, final Integer value)
     {
-        return valOrNull(put(key, value.intValue()));
+        return valueOrNull(put(key, value.intValue()));
     }
 
     /**
@@ -349,11 +355,11 @@ public class Object2IntHashMap<K>
     @SuppressWarnings("unchecked")
     public Integer remove(final Object key)
     {
-        return valOrNull(removeKey(((K)key)));
+        return valueOrNull(removeKey(((K)key)));
     }
 
     /**
-     * Overloaded version of {@link Map#remove(Object)} that takes a primitive int key.
+     * Overloaded version of {@link Map#remove(Object)} that takes a key and returns a primitive int value.
      * Due to type erasure have to rename the method
      *
      * @param key for indexing the {@link Map}
@@ -656,7 +662,7 @@ public class Object2IntHashMap<K>
         }
     }
 
-    private Integer valOrNull(final int value)
+    private Integer valueOrNull(final int value)
     {
         return value == missingValue ? null : value;
     }
@@ -766,6 +772,7 @@ public class Object2IntHashMap<K>
             }
 
             entryIterator.reset();
+
             return entryIterator;
         }
 
@@ -784,9 +791,50 @@ public class Object2IntHashMap<K>
          */
         public boolean contains(final Object o)
         {
-            final Entry entry = (Entry)o;
+            if (!(o instanceof Entry))
+            {
+                return false;
+            }
+
+            @SuppressWarnings("rawtypes") final Entry entry = (Entry)o;
             final Integer value = get(entry.getKey());
+
             return value != null && value.equals(entry.getValue());
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public Object[] toArray()
+        {
+            return toArray(new Object[size()]);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @SuppressWarnings("unchecked")
+        public <T> T[] toArray(final T[] a)
+        {
+            final T[] array = a.length >= size ?
+                a : (T[])java.lang.reflect.Array.newInstance(a.getClass().getComponentType(), size);
+            final EntryIterator it = iterator();
+
+            for (@DoNotSub int i = 0; i < array.length; i++)
+            {
+                if (it.hasNext())
+                {
+                    it.next();
+                    array[i] = (T)it.allocateDuplicateEntry();
+                }
+                else
+                {
+                    array[i] = null;
+                    break;
+                }
+            }
+
+            return array;
         }
     }
 
@@ -896,7 +944,6 @@ public class Object2IntHashMap<K>
         public int nextInt()
         {
             findNext();
-
             return values[position()];
         }
     }
@@ -909,7 +956,6 @@ public class Object2IntHashMap<K>
         public K next()
         {
             findNext();
-
             return keys[position()];
         }
     }
@@ -934,49 +980,7 @@ public class Object2IntHashMap<K>
 
         private Entry<K, Integer> allocateDuplicateEntry()
         {
-            final K k = getKey();
-            final int v = getIntValue();
-
-            return new Entry<K, Integer>()
-            {
-                public K getKey()
-                {
-                    return k;
-                }
-
-                public Integer getValue()
-                {
-                    return v;
-                }
-
-                public Integer setValue(final Integer value)
-                {
-                    return Object2IntHashMap.this.put(k, value);
-                }
-
-                @DoNotSub public int hashCode()
-                {
-                    return getKey().hashCode() ^ Integer.hashCode(getIntValue());
-                }
-
-                @DoNotSub public boolean equals(final Object o)
-                {
-                    if (!(o instanceof Entry))
-                    {
-                        return false;
-                    }
-
-                    final Map.Entry e = (Entry)o;
-
-                    return (e.getKey() != null && e.getValue() != null) &&
-                        (e.getKey().equals(k) && e.getValue().equals(v));
-                }
-
-                public String toString()
-                {
-                    return k + "=" + v;
-                }
-            };
+            return new MapEntry(getKey(), getIntValue());
         }
 
         public K getKey()
@@ -1011,6 +1015,55 @@ public class Object2IntHashMap<K>
             values[pos] = value;
 
             return oldValue;
+        }
+
+        public final class MapEntry implements Entry<K, Integer>
+        {
+            private final K k;
+            private final int v;
+
+            public MapEntry(final K k, final int v)
+            {
+                this.k = k;
+                this.v = v;
+            }
+
+            public K getKey()
+            {
+                return k;
+            }
+
+            public Integer getValue()
+            {
+                return v;
+            }
+
+            public Integer setValue(final Integer value)
+            {
+                return Object2IntHashMap.this.put(k, value);
+            }
+
+            @DoNotSub public int hashCode()
+            {
+                return getKey().hashCode() ^ Integer.hashCode(getIntValue());
+            }
+
+            @DoNotSub public boolean equals(final Object o)
+            {
+                if (!(o instanceof Map.Entry))
+                {
+                    return false;
+                }
+
+                @SuppressWarnings("rawtypes") final Entry e = (Entry)o;
+
+                return (e.getKey() != null && e.getValue() != null) && (e.getKey().equals(k) && e.getValue().equals(v));
+            }
+
+            public String toString()
+            {
+                return k + "=" + v;
+            }
         }
     }
 }

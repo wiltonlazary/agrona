@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -170,7 +170,6 @@ public class IntHashSet extends AbstractSet<Integer> implements Serializable
             return !previousContainsMissingValue;
         }
 
-        final int[] values = this.values;
         @DoNotSub final int mask = values.length - 1;
         @DoNotSub int index = Hashing.hash(value, mask);
 
@@ -255,7 +254,6 @@ public class IntHashSet extends AbstractSet<Integer> implements Serializable
             return previousContainsMissingValue;
         }
 
-        final int[] values = this.values;
         @DoNotSub final int mask = values.length - 1;
         @DoNotSub int index = Hashing.hash(value, mask);
 
@@ -283,7 +281,6 @@ public class IntHashSet extends AbstractSet<Integer> implements Serializable
     @SuppressWarnings("FinalParameters")
     @DoNotSub void compactChain(int deleteIndex)
     {
-        final int[] values = this.values;
         @DoNotSub final int mask = values.length - 1;
 
         @DoNotSub int index = deleteIndex;
@@ -340,7 +337,6 @@ public class IntHashSet extends AbstractSet<Integer> implements Serializable
             return containsMissingValue;
         }
 
-        final int[] values = this.values;
         @DoNotSub final int mask = values.length - 1;
         @DoNotSub int index = Hashing.hash(value, mask);
 

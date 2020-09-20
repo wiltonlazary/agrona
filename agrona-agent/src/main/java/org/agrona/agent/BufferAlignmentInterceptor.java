@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,10 @@ import org.agrona.DirectBuffer;
 
 import net.bytebuddy.asm.Advice;
 
+/**
+ * Interceptor to be applied when verifying buffer alignment accesses.
+ */
+@SuppressWarnings("unused")
 public class BufferAlignmentInterceptor
 {
     abstract static class Verifier
@@ -27,17 +31,17 @@ public class BufferAlignmentInterceptor
         public static void verifyAlignment(final int index, final @Advice.This DirectBuffer buffer, final int alignment)
         {
             final int alignmentOffset = (int)(buffer.addressOffset() + index) % alignment;
-            if (alignmentOffset != 0)
+            if (0 != alignmentOffset)
             {
-                final String message = String.format(
-                    "Unaligned %d-byte access (Index=%d, Buffer Alignment Offset=%d)",
-                    alignment, index, alignmentOffset);
-
-                throw new BufferAlignmentException(message);
+                throw new BufferAlignmentException(
+                    "Unaligned " + alignment + "-byte access (index=" + index + ", offset=" + alignmentOffset + ")");
             }
         }
     }
 
+    /**
+     * Verifier for {@code long} types.
+     */
     public static final class LongVerifier extends Verifier
     {
         @Advice.OnMethodEnter
@@ -47,6 +51,9 @@ public class BufferAlignmentInterceptor
         }
     }
 
+    /**
+     * Verifier for {@code double} types.
+     */
     public static final class DoubleVerifier extends Verifier
     {
         @Advice.OnMethodEnter
@@ -56,6 +63,9 @@ public class BufferAlignmentInterceptor
         }
     }
 
+    /**
+     * Verifier for {@code int} types.
+     */
     public static final class IntVerifier extends Verifier
     {
         @Advice.OnMethodEnter
@@ -65,6 +75,9 @@ public class BufferAlignmentInterceptor
         }
     }
 
+    /**
+     * Verifier for {@code float} types.
+     */
     public static final class FloatVerifier extends Verifier
     {
         @Advice.OnMethodEnter
@@ -74,6 +87,9 @@ public class BufferAlignmentInterceptor
         }
     }
 
+    /**
+     * Verifier for {@code short} types.
+     */
     public static final class ShortVerifier extends Verifier
     {
         @Advice.OnMethodEnter
@@ -83,6 +99,9 @@ public class BufferAlignmentInterceptor
         }
     }
 
+    /**
+     * Verifier for {@code char} types.
+     */
     public static final class CharVerifier extends Verifier
     {
         @Advice.OnMethodEnter

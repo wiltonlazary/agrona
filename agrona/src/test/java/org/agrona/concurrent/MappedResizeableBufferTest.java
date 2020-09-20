@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,21 @@
 package org.agrona.concurrent;
 
 import org.agrona.CloseHelper;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
 import org.agrona.IoUtil;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MappedResizeableBufferTest
 {
@@ -40,7 +42,7 @@ public class MappedResizeableBufferTest
 
     private MappedResizeableBuffer buffer;
 
-    @BeforeClass
+    @BeforeAll
     public static void setUp() throws IOException
     {
         final RandomAccessFile file = new RandomAccessFile(PATH, "rw");
@@ -48,13 +50,13 @@ public class MappedResizeableBufferTest
         channel = file.getChannel();
     }
 
-    @After
+    @AfterEach
     public void close()
     {
         CloseHelper.close(buffer);
     }
 
-    @AfterClass
+    @AfterAll
     public static void tearDown()
     {
         CloseHelper.close(channel);

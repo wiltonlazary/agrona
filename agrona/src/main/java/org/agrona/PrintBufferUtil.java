@@ -1,6 +1,6 @@
 /*
  * Copyright 2012 The Netty Project
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ package org.agrona;
  *
  * This is code adapted from <a href="https://netty.io/">the Netty project</a> adopted to support {@link DirectBuffer}.
  */
-public class PrintBufferUtil
+public final class PrintBufferUtil
 {
     private static final String NEWLINE = System.lineSeparator();
     private static final String EMPTY_STRING = "";
@@ -46,6 +46,10 @@ public class PrintBufferUtil
         {
             BYTE2HEX_PAD[i] = Integer.toHexString(i);
         }
+    }
+
+    private PrintBufferUtil()
+    {
     }
 
     /**

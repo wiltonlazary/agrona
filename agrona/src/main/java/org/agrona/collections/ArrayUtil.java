@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,6 +56,10 @@ public final class ArrayUtil
      */
     public static final int MAX_CAPACITY = Integer.MAX_VALUE - 8;
 
+    private ArrayUtil()
+    {
+    }
+
     /**
      * Add an element to an array resulting in a new array.
      *
@@ -99,6 +103,17 @@ public final class ArrayUtil
         return remove(oldElements, index);
     }
 
+    /**
+     * Remove an element from an array resulting in a new array if the index was inside the array otherwise the old
+     * array.
+     * <p>
+     * Returns the old elements array if the index isn't inside the array.
+     *
+     * @param oldElements to have the element removed from.
+     * @param index       to remove the element at.
+     * @param <T>         type of the array.
+     * @return a new array without the element if the index is inside the array otherwise the original array.
+     */
     public static <T> T[] remove(final T[] oldElements, final int index)
     {
         if (index == UNKNOWN_INDEX)

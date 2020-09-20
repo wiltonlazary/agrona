@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import static java.lang.System.getProperty;
 /**
  * Utilities for inspecting the system.
  */
-public class SystemUtil
+public final class SystemUtil
 {
     /**
      * PID value if a process id could not be determined. This value should be equal to a kernel only process
@@ -73,10 +73,14 @@ public class SystemUtil
         PID = pid;
     }
 
+    private SystemUtil()
+    {
+    }
+
     /**
      * Get the name of the operating system as a lower case String.
      * <p>
-     * This is what is returned from System.getProperty("os.name").toLowerCase().
+     * This is what is returned from {@code System.getProperty("os.name").toLowerCase()}.
      *
      * @return the name of the operating system as a lower case String.
      */
@@ -94,6 +98,26 @@ public class SystemUtil
     public static long getPid()
     {
         return PID;
+    }
+
+    /**
+     * Is the operating system likely to be Windows based on {@link #osName()}.
+     *
+     * @return true if the operating system is likely to be Windows based on {@link #osName()}.
+     */
+    public static boolean isWindows()
+    {
+        return OS_NAME.startsWith("win");
+    }
+
+    /**
+     * Is the operating system likely to be Linux based on {@link #osName()}.
+     *
+     * @return true if the operating system is likely to be Linux based on {@link #osName()}.
+     */
+    public static boolean isLinux()
+    {
+        return OS_NAME.contains("linux");
     }
 
     /**
@@ -287,7 +311,7 @@ public class SystemUtil
         final char lastCharacter = propertyValue.charAt(lengthMinusSuffix);
         if (Character.isDigit(lastCharacter))
         {
-            return Long.valueOf(propertyValue);
+            return Long.parseLong(propertyValue);
         }
 
         final long value = AsciiEncoding.parseLongAscii(propertyValue, 0, lengthMinusSuffix);
@@ -368,7 +392,7 @@ public class SystemUtil
         final char lastCharacter = propertyValue.charAt(propertyValue.length() - 1);
         if (Character.isDigit(lastCharacter))
         {
-            return Long.valueOf(propertyValue);
+            return Long.parseLong(propertyValue);
         }
 
         if (lastCharacter != 's' && lastCharacter != 'S')

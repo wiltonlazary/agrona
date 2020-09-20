@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,21 +15,21 @@
  */
 package org.agrona.collections;
 
-import org.junit.Assert;
-import org.junit.Test;
+import java.util.ArrayList;
+import org.junit.jupiter.api.Test;
 
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
-import static org.hamcrest.Matchers.closeTo;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.*;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.hamcrest.number.OrderingComparison.lessThan;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class Int2ObjectHashMapTest
 {
@@ -127,7 +127,7 @@ public class Int2ObjectHashMapTest
         intToObjectMap.clear();
 
         assertThat(intToObjectMap.size(), is(0));
-        Assert.assertNull(intToObjectMap.get(1));
+        assertNull(intToObjectMap.get(1));
     }
 
     @Test
@@ -158,8 +158,8 @@ public class Int2ObjectHashMapTest
 
         intToObjectMap.put(key, value);
 
-        Assert.assertTrue(intToObjectMap.containsValue(value));
-        Assert.assertFalse(intToObjectMap.containsValue("NoKey"));
+        assertTrue(intToObjectMap.containsValue(value));
+        assertFalse(intToObjectMap.containsValue("NoKey"));
     }
 
     @Test
@@ -170,8 +170,8 @@ public class Int2ObjectHashMapTest
 
         intToObjectMap.put(key, value);
 
-        Assert.assertTrue(intToObjectMap.containsKey(key));
-        Assert.assertFalse(intToObjectMap.containsKey(0));
+        assertTrue(intToObjectMap.containsKey(key));
+        assertFalse(intToObjectMap.containsKey(0));
     }
 
     @Test
@@ -182,11 +182,11 @@ public class Int2ObjectHashMapTest
 
         intToObjectMap.put(key, value);
 
-        Assert.assertTrue(intToObjectMap.containsKey(key));
+        assertTrue(intToObjectMap.containsKey(key));
 
         intToObjectMap.remove(key);
 
-        Assert.assertFalse(intToObjectMap.containsKey(key));
+        assertFalse(intToObjectMap.containsKey(key));
     }
 
     @Test
@@ -210,7 +210,7 @@ public class Int2ObjectHashMapTest
     @Test
     public void shouldIterateValues()
     {
-        final Collection<String> initialSet = new HashSet<>();
+        final Collection<String> initialSet = new ArrayList<>();
 
         for (int i = 0; i < 11; i++)
         {
@@ -219,15 +219,39 @@ public class Int2ObjectHashMapTest
             initialSet.add(value);
         }
 
-        final Collection<String> copyToSet = new HashSet<>();
-
+        final Collection<String> copyToSetOne = new ArrayList<>();
         for (final String s : intToObjectMap.values())
         {
             //noinspection UseBulkOperation
-            copyToSet.add(s);
+            copyToSetOne.add(s);
         }
 
-        assertThat(copyToSet, is(initialSet));
+        final Collection<String> copyToSetTwo = new ArrayList<>();
+        for (final String s : intToObjectMap.values())
+        {
+            //noinspection UseBulkOperation
+            copyToSetTwo.add(s);
+        }
+
+        assertEquals(initialSet, copyToSetOne);
+        assertEquals(initialSet, copyToSetTwo);
+    }
+
+    @Test
+    public void shouldForEachValues()
+    {
+        final Collection<String> expected = new HashSet<>();
+        for (int i = 0; i < 11; i++)
+        {
+            final String value = Integer.toString(i);
+            intToObjectMap.put(i, value);
+            expected.add(value);
+        }
+
+        final Collection<String> copySet = new HashSet<>();
+        intToObjectMap.values().forEach(copySet::add);
+
+        assertEquals(expected, copySet);
     }
 
     @Test
@@ -244,12 +268,12 @@ public class Int2ObjectHashMapTest
 
         final Collection<Integer> copyToSet = new HashSet<>();
 
-        for (final Int2ObjectHashMap.KeyIterator iter = intToObjectMap.keySet().iterator(); iter.hasNext(); )
+        for (final Int2ObjectHashMap<String>.KeyIterator iter = intToObjectMap.keySet().iterator(); iter.hasNext(); )
         {
             copyToSet.add(iter.nextInt());
         }
 
-        assertThat(copyToSet, is(initialSet));
+        assertEquals(initialSet, copyToSet);
     }
 
     @Test
@@ -278,7 +302,7 @@ public class Int2ObjectHashMapTest
             copyToSet.add(aInteger);
         }
 
-        assertThat(copyToSet, is(initialSet));
+        assertEquals(initialSet, copyToSet);
     }
 
     @Test
@@ -311,9 +335,9 @@ public class Int2ObjectHashMapTest
         }
 
         final int reducedSetSize = count - 1;
-        assertThat(initialSet.size(), is(count));
-        assertThat(intToObjectMap.size(), is(reducedSetSize));
-        assertThat(copyOfSet.size(), is(reducedSetSize));
+        assertEquals(count, initialSet.size());
+        assertEquals(reducedSetSize, intToObjectMap.size());
+        assertEquals(reducedSetSize, copyOfSet.size());
     }
 
     @Test
@@ -341,7 +365,7 @@ public class Int2ObjectHashMapTest
             }
         }
 
-        assertThat(intToObjectMap.get(7), equalTo(testValue));
+        assertEquals(testValue, intToObjectMap.get(7));
     }
 
     private void iterateEntries()
@@ -426,5 +450,56 @@ public class Int2ObjectHashMapTest
 
         assertThat(map.size(), is(1));
     }
-}
 
+    @Test
+    public void testToArray()
+    {
+        final Int2ObjectHashMap<String> map = new Int2ObjectHashMap<>();
+        map.put(1, "a");
+        map.put(2, "b");
+        map.put(3, "c");
+
+        final Object[] array = map.entrySet().toArray();
+        for (final Object entry : array)
+        {
+            map.remove(((Map.Entry<?, ?>)entry).getKey());
+        }
+
+        assertTrue(map.isEmpty());
+    }
+
+    @Test
+    public void testToArrayTyped()
+    {
+        final Int2ObjectHashMap<String> map = new Int2ObjectHashMap<>();
+        map.put(1, "a");
+        map.put(2, "b");
+        map.put(3, "c");
+
+        final Map.Entry<?, ?>[] type = new Map.Entry[1];
+        final Map.Entry<?, ?>[] array = map.entrySet().toArray(type);
+        for (final Map.Entry<?, ?> entry : array)
+        {
+            map.remove(entry.getKey());
+        }
+
+        assertTrue(map.isEmpty());
+    }
+
+    @Test
+    public void testToArrayWithArrayListConstructor()
+    {
+        final Int2ObjectHashMap<String> map = new Int2ObjectHashMap<>();
+        map.put(1, "a");
+        map.put(2, "b");
+        map.put(3, "c");
+
+        final List<Map.Entry<Integer, String>> list = new ArrayList<>(map.entrySet());
+        for (final Map.Entry<Integer, String> entry : list)
+        {
+            map.remove(entry.getKey());
+        }
+
+        assertTrue(map.isEmpty());
+    }
+}

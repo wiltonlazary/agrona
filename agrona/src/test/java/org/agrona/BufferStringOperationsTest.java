@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,37 +16,33 @@
 package org.agrona;
 
 import org.agrona.concurrent.UnsafeBuffer;
-import org.junit.experimental.theories.DataPoint;
-import org.junit.experimental.theories.Theories;
-import org.junit.experimental.theories.Theory;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.stream.Stream;
 
 import static org.agrona.BitUtil.SIZE_OF_INT;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
 
-@RunWith(Theories.class)
 public class BufferStringOperationsTest
 {
     private static final int BUFFER_CAPACITY = 256;
     private static final int INDEX = 8;
 
-    @DataPoint
-    public static final MutableDirectBuffer ARRAY_BUFFER = new UnsafeBuffer(new byte[BUFFER_CAPACITY]);
+    private static Stream<MutableDirectBuffer> buffers()
+    {
+        return Stream.of(
+            new UnsafeBuffer(new byte[BUFFER_CAPACITY]),
+            new UnsafeBuffer(ByteBuffer.allocateDirect(BUFFER_CAPACITY)),
+            new ExpandableArrayBuffer(BUFFER_CAPACITY),
+            new ExpandableDirectByteBuffer(BUFFER_CAPACITY));
+    }
 
-    @DataPoint
-    public static final MutableDirectBuffer BYTE_BUFFER = new UnsafeBuffer(ByteBuffer.allocateDirect(BUFFER_CAPACITY));
-
-    @DataPoint
-    public static final MutableDirectBuffer EXPANDABLE_ARRAY_BUFFER = new ExpandableArrayBuffer(BUFFER_CAPACITY);
-
-    @DataPoint
-    public static final MutableDirectBuffer EXPANDABLE_BYTE_BUFFER = new ExpandableDirectByteBuffer(BUFFER_CAPACITY);
-
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldInsertNonAsciiAsQuestionMark(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World £";
@@ -55,7 +51,8 @@ public class BufferStringOperationsTest
         assertThat(buffer.getStringAscii(INDEX), is("Hello World ?"));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldAppendAsciiStringInParts(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World Test";
@@ -79,7 +76,8 @@ public class BufferStringOperationsTest
         assertThat(buffer.getStringAscii(INDEX), is(value));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldRoundTripAsciiStringNativeLength(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World";
@@ -89,7 +87,8 @@ public class BufferStringOperationsTest
         assertThat(buffer.getStringAscii(INDEX), is(value));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldRoundTripAsciiStringBigEndianLength(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World";
@@ -99,7 +98,8 @@ public class BufferStringOperationsTest
         assertThat(buffer.getStringAscii(INDEX, ByteOrder.BIG_ENDIAN), is(value));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldRoundTripAsciiStringWithoutLength(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World";
@@ -109,7 +109,8 @@ public class BufferStringOperationsTest
         assertThat(buffer.getStringWithoutLengthAscii(INDEX, value.length()), is(value));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldRoundTripUtf8StringNativeLength(final MutableDirectBuffer buffer)
     {
         final String value = "Hello£ World £";
@@ -119,7 +120,8 @@ public class BufferStringOperationsTest
         assertThat(buffer.getStringUtf8(INDEX), is(value));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldRoundTripUtf8StringBigEndianLength(final MutableDirectBuffer buffer)
     {
         final String value = "Hello£ World £";
@@ -129,7 +131,8 @@ public class BufferStringOperationsTest
         assertThat(buffer.getStringUtf8(INDEX, ByteOrder.BIG_ENDIAN), is(value));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldRoundTripUtf8StringWithoutLength(final MutableDirectBuffer buffer)
     {
         final String value = "Hello£ World £";
@@ -139,7 +142,8 @@ public class BufferStringOperationsTest
         assertThat(buffer.getStringWithoutLengthUtf8(INDEX, encodedLength), is(value));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldGetAsciiToAppendable(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World";
@@ -153,7 +157,8 @@ public class BufferStringOperationsTest
         assertThat(appendable.toString(), is(value));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldGetAsciiWithByteOrderToAppendable(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World";
@@ -167,7 +172,8 @@ public class BufferStringOperationsTest
         assertThat(appendable.toString(), is(value));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldGetAsciiToAppendableForLength(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World";
@@ -182,7 +188,8 @@ public class BufferStringOperationsTest
         assertThat(appendable.toString(), is(value.substring(0, length)));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldAppendWithInvalidChar(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World";
@@ -197,7 +204,8 @@ public class BufferStringOperationsTest
         assertThat(appendable.toString(), is("Hello?World"));
     }
 
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldAppendWithInvalidCharWithoutLength(final MutableDirectBuffer buffer)
     {
         final String value = "Hello World";

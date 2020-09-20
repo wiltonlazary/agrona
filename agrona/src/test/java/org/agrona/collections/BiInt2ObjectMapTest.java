@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,17 +15,15 @@
  */
 package org.agrona.collections;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
 import java.util.Set;
 
-import static org.hamcrest.Matchers.either;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.*;
 import static org.hamcrest.core.IsEqual.equalTo;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class BiInt2ObjectMapTest
 {
@@ -202,12 +200,12 @@ public class BiInt2ObjectMapTest
                 return true;
             }
 
-            if (o == null || getClass() != o.getClass())
+            if (!(o instanceof EntryCapture))
             {
                 return false;
             }
 
-            final EntryCapture that = (EntryCapture)o;
+            final EntryCapture<?> that = (EntryCapture<?>)o;
 
             return keyPartA == that.keyPartA && keyPartB == that.keyPartB && value.equals(that.value);
 

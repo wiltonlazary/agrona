@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,19 @@ import static java.nio.charset.StandardCharsets.US_ASCII;
 /**
  * Helper for dealing with ASCII encoding of numbers.
  */
-public class AsciiEncoding
+public final class AsciiEncoding
 {
+    public static final byte[] MIN_INTEGER_VALUE = String.valueOf(Integer.MIN_VALUE).getBytes(US_ASCII);
+    public static final byte[] MIN_LONG_VALUE = String.valueOf(Long.MIN_VALUE).getBytes(US_ASCII);
+    public static final byte MINUS_SIGN = '-';
     public static final byte ZERO = '0';
+
+    private static final byte[] MIN_INT_DIGITS = "2147483648".getBytes(US_ASCII);
+    private static final byte[] MAX_INT_DIGITS = "2147483647".getBytes(US_ASCII);
+
+    private static final byte[] MIN_LONG_DIGITS = "9223372036854775808".getBytes(US_ASCII);
+    private static final byte[] MAX_LONG_DIGITS = "9223372036854775807".getBytes(US_ASCII);
+
     private static final int[] INT_ROUNDS =
     {
         9, 99, 999, 9999, 99999, 999999, 9999999, 99999999, 999999999, Integer.MAX_VALUE
@@ -36,9 +46,9 @@ public class AsciiEncoding
         999999999_999999999L, Long.MAX_VALUE
     };
 
-    public static final byte[] MIN_INTEGER_VALUE = String.valueOf(Integer.MIN_VALUE).getBytes(US_ASCII);
-    public static final byte[] MIN_LONG_VALUE = String.valueOf(Long.MIN_VALUE).getBytes(US_ASCII);
-    public static final byte MINUS_SIGN = (byte)'-';
+    private AsciiEncoding()
+    {
+    }
 
     /**
      * Get the end offset of an ASCII encoded value.
@@ -117,18 +127,23 @@ public class AsciiEncoding
      * @param index  at which the number begins.
      * @param length of the encoded number in characters.
      * @throws AsciiNumberFormatException if <code>cs</code> is not an int value
-     * @throws IndexOutOfBoundsException if <code>cs</code> is empty
+     * @throws IndexOutOfBoundsException if parsing results in access outside string boundaries, or length is negative
      * @return the parsed value.
      */
     public static int parseIntAscii(final CharSequence cs, final int index, final int length)
     {
-        final int endExclusive = index + length;
-        final int first = cs.charAt(index);
-        int i = index;
-
-        if (first == MINUS_SIGN && length > 1)
+        if (length <= 1)
         {
-            i++;
+            return parseSingleDigit(cs, index, length);
+        }
+
+        final boolean hasSign = cs.charAt(index) == MINUS_SIGN;
+        final int endExclusive = index + length;
+        int i = hasSign ? index + 1 : index;
+
+        if (length >= 10)
+        {
+            checkIntLimits(cs, index, length, i, hasSign);
         }
 
         int tally = 0;
@@ -137,7 +152,7 @@ public class AsciiEncoding
             tally = (tally * 10) + AsciiEncoding.getDigit(i, cs.charAt(i));
         }
 
-        if (first == MINUS_SIGN)
+        if (hasSign)
         {
             tally = -tally;
         }
@@ -152,18 +167,23 @@ public class AsciiEncoding
      * @param index  at which the number begins.
      * @param length of the encoded number in characters.
      * @throws AsciiNumberFormatException if <code>cs</code> is not a long value
-     * @throws IndexOutOfBoundsException if <code>cs</code> is empty
+     * @throws IndexOutOfBoundsException if parsing results in access outside string boundaries, or length is negative
      * @return the parsed value.
      */
     public static long parseLongAscii(final CharSequence cs, final int index, final int length)
     {
-        final int endExclusive = index + length;
-        final int first = cs.charAt(index);
-        int i = index;
-
-        if (first == MINUS_SIGN && length > 1)
+        if (length <= 1)
         {
-            i++;
+            return parseSingleDigit(cs, index, length);
+        }
+
+        final boolean hasSign = cs.charAt(index) == MINUS_SIGN;
+        final int endExclusive = index + length;
+        int i = hasSign ? index + 1 : index;
+
+        if (length >= 19)
+        {
+            checkLongLimits(cs, index, length, i, hasSign);
         }
 
         long tally = 0;
@@ -172,11 +192,94 @@ public class AsciiEncoding
             tally = (tally * 10) + AsciiEncoding.getDigit(i, cs.charAt(i));
         }
 
-        if (first == MINUS_SIGN)
+        if (hasSign)
         {
             tally = -tally;
         }
 
         return tally;
+    }
+
+    private static int parseSingleDigit(final CharSequence cs, final int index, final int length)
+    {
+        if (1 == length)
+        {
+            return AsciiEncoding.getDigit(index, cs.charAt(index));
+        }
+        else if (0 == length)
+        {
+            throw new AsciiNumberFormatException("'' is not a valid digit @ " + index);
+        }
+        else
+        {
+            throw new IndexOutOfBoundsException("length=" + length);
+        }
+    }
+
+    private static void checkIntLimits(
+        final CharSequence cs, final int index, final int length, final int i, final boolean hasSign)
+    {
+        if (10 == length)
+        {
+            if (!hasSign && isOverflow(MAX_INT_DIGITS, cs, i))
+            {
+                throw new AsciiNumberFormatException("int overflow parsing: " + cs.subSequence(index, index + length));
+            }
+        }
+        else if (11 == length && hasSign)
+        {
+            if (isOverflow(MIN_INT_DIGITS, cs, i))
+            {
+                throw new AsciiNumberFormatException("int overflow parsing: " + cs.subSequence(index, index + length));
+            }
+        }
+        else
+        {
+            throw new AsciiNumberFormatException("int overflow parsing: " + cs.subSequence(index, index + length));
+        }
+    }
+
+    private static void checkLongLimits(
+        final CharSequence cs, final int index, final int length, final int i, final boolean hasSign)
+    {
+        if (19 == length)
+        {
+            if (!hasSign && isOverflow(MAX_LONG_DIGITS, cs, i))
+            {
+                throw new AsciiNumberFormatException("long overflow parsing: " + cs.subSequence(index, index + length));
+            }
+        }
+        else if (20 == length && hasSign)
+        {
+            if (isOverflow(MIN_LONG_DIGITS, cs, i))
+            {
+                throw new AsciiNumberFormatException("long overflow parsing: " + cs.subSequence(index, index + length));
+            }
+        }
+        else
+        {
+            throw new AsciiNumberFormatException("long overflow parsing: " + cs.subSequence(index, index + length));
+        }
+    }
+
+    private static boolean isOverflow(final byte[] limitDigits, final CharSequence cs, final int index)
+    {
+        for (int i = 0; i < limitDigits.length; i++)
+        {
+            final int digit = AsciiEncoding.getDigit(i, cs.charAt(index + i));
+            final int limitDigit = limitDigits[i] - 0x30;
+
+            if (digit < limitDigit)
+            {
+                break;
+            }
+
+            if (digit > limitDigit)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

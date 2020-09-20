@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import static java.nio.charset.StandardCharsets.US_ASCII;
 /**
  * Miscellaneous useful functions for dealing with low level bits and bytes.
  */
-public class BitUtil
+public final class BitUtil
 {
     /**
      * Size of a byte in bytes
@@ -105,6 +105,10 @@ public class BitUtil
     }
 
     private static final int LAST_DIGIT_MASK = 0b1;
+
+    private BitUtil()
+    {
+    }
 
     /**
      * Fast method of finding the next power of 2 greater than or equal to the supplied value.

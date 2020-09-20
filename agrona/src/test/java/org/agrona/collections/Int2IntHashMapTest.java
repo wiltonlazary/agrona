@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,17 +15,19 @@
  */
 package org.agrona.collections;
 
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.IntStream;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsEqual.equalTo;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 
@@ -33,16 +35,12 @@ public class Int2IntHashMapTest
 {
     static final int MISSING_VALUE = -1;
 
-    final Int2IntHashMap map;
+    Int2IntHashMap map;
 
-    public Int2IntHashMapTest()
+    @BeforeEach
+    void before()
     {
-        this (new Int2IntHashMap(MISSING_VALUE));
-    }
-
-    Int2IntHashMapTest(final Int2IntHashMap map)
-    {
-        this.map = map;
+        map = new Int2IntHashMap(MISSING_VALUE);
     }
 
     @Test
@@ -223,13 +221,13 @@ public class Int2IntHashMapTest
         assertIterateKeysWithoutHasNext();
     }
 
-    @Test(expected = NoSuchElementException.class)
+    @Test
     public void shouldExceptionForEmptyIteration()
     {
-        keyIterator().next();
+        assertThrows(NoSuchElementException.class, () -> keyIterator().next());
     }
 
-    @Test(expected = NoSuchElementException.class)
+    @Test
     public void shouldExceptionWhenRunningOutOfElements()
     {
         addTwoElements();
@@ -237,7 +235,8 @@ public class Int2IntHashMapTest
         final Iterator<Integer> iterator = keyIterator();
         iterator.next();
         iterator.next();
-        iterator.next();
+
+        assertThrows(NoSuchElementException.class, iterator::next);
     }
 
     @Test
@@ -371,16 +370,16 @@ public class Int2IntHashMapTest
         assertEquals(count, map.size());
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldNotSupportLoadFactorOfGreaterThanOne()
     {
-        new Int2IntHashMap(4, 2, 0);
+        assertThrows(IllegalArgumentException.class, () -> new Int2IntHashMap(4, 2, 0));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldNotSupportLoadFactorOfOne()
     {
-        new Int2IntHashMap(4, 1, 0);
+        assertThrows(IllegalArgumentException.class, () -> new Int2IntHashMap(4, 1, 0));
     }
 
     @Test
@@ -389,12 +388,12 @@ public class Int2IntHashMapTest
         final Int2IntHashMap map = new Int2IntHashMap(16, 0.6f, -1);
 
         IntStream.range(1, 17).forEach((i) -> map.put(i, i));
-        assertEquals("Map has correct size", 16, map.size());
+        assertEquals(16, map.size(), "Map has correct size");
 
         final List<Integer> keys = new ArrayList<>(map.keySet());
         keys.forEach(map::remove);
 
-        assertTrue("Map isn't empty", map.isEmpty());
+        assertTrue(map.isEmpty(), "Map isn't empty");
     }
 
     @Test
@@ -421,10 +420,10 @@ public class Int2IntHashMapTest
         assertThat(map.get(testKey), is(testValue));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldNotAllowMissingValueAsValue()
     {
-        map.put(1, MISSING_VALUE);
+        assertThrows(IllegalArgumentException.class, () -> map.put(1, MISSING_VALUE));
     }
 
     @Test
@@ -638,6 +637,80 @@ public class Int2IntHashMapTest
         assertEquals(expected, actual);
     }
 
+    @Test
+    public void shouldIterateEntriesBySpecialisedTypeAndSetValue()
+    {
+        final Map<Integer, Integer> expected = new HashMap<>();
+        final Int2IntHashMap map = new Int2IntHashMap(Integer.MIN_VALUE);
+
+        IntStream.range(1, 10).forEachOrdered((i) ->
+        {
+            map.put(i, -i);
+            expected.put(i, -i * 10);
+        });
+
+        final Int2IntHashMap.EntryIterator iter = map.entrySet().iterator();
+        while (iter.hasNext())
+        {
+            iter.next();
+            iter.setValue(iter.getIntValue() * 10);
+        }
+
+        assertEquals(expected, map);
+    }
+
+    @Test
+    public void shouldToArray()
+    {
+        final Int2IntHashMap map = new Int2IntHashMap(-127);
+        map.put(1, 11);
+        map.put(2, 12);
+        map.put(3, 13);
+
+        final Object[] array = map.entrySet().toArray();
+        for (final Object entry : array)
+        {
+            map.remove(((Int2IntHashMap.EntryIterator.MapEntry)entry).getKey());
+        }
+
+        assertTrue(map.isEmpty());
+    }
+
+    @Test
+    public void shouldToArrayTyped()
+    {
+        final Int2IntHashMap map = new Int2IntHashMap(-127);
+        map.put(1, 11);
+        map.put(2, 12);
+        map.put(3, 13);
+
+        final Entry<?, ?>[] type = new Entry[1];
+        final Entry<?, ?>[] array = map.entrySet().toArray(type);
+        for (final Entry<?, ?> entry : array)
+        {
+            map.remove(entry.getKey());
+        }
+
+        assertTrue(map.isEmpty());
+    }
+
+    @Test
+    public void shouldToArrayWithArrayListConstructor()
+    {
+        final Int2IntHashMap map = new Int2IntHashMap(-127);
+        map.put(1, 11);
+        map.put(2, 12);
+        map.put(3, 13);
+
+        final List<Map.Entry<Integer, Integer>> list = new ArrayList<>(map.entrySet());
+        for (final Map.Entry<Integer, Integer> entry : list)
+        {
+            map.remove(entry.getKey());
+        }
+
+        assertTrue(map.isEmpty());
+    }
+
     private void assertEntryIs(final Entry<Integer, Integer> entry, final int expectedKey, final int expectedValue)
     {
         assertEquals(expectedKey, entry.getKey().intValue());
@@ -710,17 +783,17 @@ public class Int2IntHashMapTest
     private void assertHashcodeEquals(final Object expected, final Object value)
     {
         assertEquals(
-            value + " should have the same hashcode as " + expected,
             expected.hashCode(),
-            value.hashCode());
+            value.hashCode(),
+            value + " should have the same hashcode as " + expected);
     }
 
     private void assertHashcodeNotEquals(final Object unexpected, final Object value)
     {
         assertNotEquals(
-            value + " should not have the same hashcode as " + unexpected,
             unexpected.hashCode(),
-            value.hashCode());
+            value.hashCode(),
+            value + " should not have the same hashcode as " + unexpected);
     }
 
     private void entrySetContainsTwoElements()

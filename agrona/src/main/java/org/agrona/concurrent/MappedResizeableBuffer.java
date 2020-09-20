@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -711,7 +711,7 @@ public class MappedResizeableBuffer implements AutoCloseable
         if (SHOULD_BOUNDS_CHECK)
         {
             boundsCheck0(index, length);
-            BufferUtil.boundsCheck(dstBuffer, (long)dstOffset, length);
+            BufferUtil.boundsCheck(dstBuffer, dstOffset, length);
         }
 
         final byte[] dstByteArray;
@@ -753,7 +753,7 @@ public class MappedResizeableBuffer implements AutoCloseable
         if (SHOULD_BOUNDS_CHECK)
         {
             boundsCheck0(index, length);
-            BufferUtil.boundsCheck(srcBuffer, (long)srcIndex, length);
+            BufferUtil.boundsCheck(srcBuffer, srcIndex, length);
         }
 
         putBytes(index, srcBuffer, srcIndex, length);
@@ -893,7 +893,7 @@ public class MappedResizeableBuffer implements AutoCloseable
     public String getStringUtf8(final long offset, final int length)
     {
         final byte[] stringInBytes = new byte[length];
-        getBytes(offset + SIZE_OF_INT, stringInBytes);
+        getBytes(offset + STR_HEADER_LEN, stringInBytes);
 
         return new String(stringInBytes, UTF_8);
     }
@@ -917,9 +917,9 @@ public class MappedResizeableBuffer implements AutoCloseable
         }
 
         putInt(offset, bytes.length);
-        putBytes(offset + SIZE_OF_INT, bytes);
+        putBytes(offset + STR_HEADER_LEN, bytes);
 
-        return SIZE_OF_INT + bytes.length;
+        return STR_HEADER_LEN + bytes.length;
     }
 
     public int putStringUtf8(final long offset, final String value, final ByteOrder byteOrder, final int maxEncodedSize)
@@ -931,9 +931,9 @@ public class MappedResizeableBuffer implements AutoCloseable
         }
 
         putInt(offset, bytes.length, byteOrder);
-        putBytes(offset + SIZE_OF_INT, bytes);
+        putBytes(offset + STR_HEADER_LEN, bytes);
 
-        return SIZE_OF_INT + bytes.length;
+        return STR_HEADER_LEN + bytes.length;
     }
 
     public String getStringWithoutLengthUtf8(final long offset, final int length)

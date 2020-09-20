@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,10 @@ import java.time.Instant;
  * Clock that provides the number of time units since the 1 Jan 1970 UTC.
  * <p>
  * This implementation my be replaced on some platforms for greater performance.
+ * <p>
+ * <b>Note:</b> The actual provided resolution may be a higher granularity than the possible precision.
+ * For example, on Java 8 many JVMs will only advance a millisecond per tick so when requesting micros or nanos
+ * then the returned time may be a multiple of milliseconds. Later JVMs tend to improve on this.
  */
 public class HighResolutionClock
 {
@@ -50,6 +54,9 @@ public class HighResolutionClock
 
     /**
      * The number of nanoseconds since the 1 Jan 1970 UTC.
+     *
+     * Precision depends upon the JVM version used. Hotspot/OpenJDK 8 provides millisecond level precision, 11 provides
+     * microsecond or lower granularity.
      *
      * @return the number of nanoseconds since the 1 Jan 1970 UTC.
      */

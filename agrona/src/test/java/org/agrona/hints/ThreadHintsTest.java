@@ -15,7 +15,7 @@
  */
 package org.agrona.hints;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ThreadHintsTest
 {
@@ -28,4 +28,3 @@ public class ThreadHintsTest
         }
     }
 }
-

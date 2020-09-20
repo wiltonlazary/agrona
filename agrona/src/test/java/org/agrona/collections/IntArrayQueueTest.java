@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
  */
 package org.agrona.collections;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class IntArrayQueueTest
 {
@@ -172,7 +172,7 @@ public class IntArrayQueueTest
     {
         final IntArrayQueue queue = new IntArrayQueue();
 
-        for (final int i : queue)
+        for (final int ignore : queue)
         {
             fail("Should be empty");
         }
@@ -184,7 +184,7 @@ public class IntArrayQueueTest
             queue.removeInt();
         }
 
-        for (final int i : queue)
+        for (final int ignore : queue)
         {
             fail("Should be empty");
         }

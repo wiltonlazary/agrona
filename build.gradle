@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,18 +20,25 @@ buildscript {
 }
 
 plugins {
-    id 'java'
     id 'java-library'
-    id 'com.github.johnrengelman.shadow' version '5.1.0' apply false
-    id 'io.freefair.javadoc-links' version '4.1.2' apply false
-    id 'biz.aQute.bnd.builder' version '4.2.0' apply false
+    id 'idea'
+    id 'com.github.johnrengelman.shadow' version '6.0.0' apply false
+    id 'biz.aQute.bnd.builder' version '5.1.2' apply false
+    id "com.github.ben-manes.versions" version "0.33.0"
 }
 
-defaultTasks 'clean', 'build', 'shadowJar', 'install'
+defaultTasks 'clean', 'build'
+
+def byteBuddyVersion = '1.10.15'
+def checkstyleVersion = '8.36'
+def hamcrestVersion = '2.2'
+def mockitoVersion = '3.5.11'
+def junitVersion = '5.7.0'
+def guavaTestLib = '29.0-jre'
+def jmhVersion = '1.25.2'
 
 def agronaGroup = 'org.agrona'
-def agronaVersion = '1.0.9-SNAPSHOT'
-def agronaJavaVersion = JavaVersion.VERSION_1_8
+def agronaVersion = '1.7.3-SNAPSHOT'
 def externalJdk = true
 
 if (null == System.getenv("JAVA_HOME")) {
@@ -39,21 +46,33 @@ if (null == System.getenv("JAVA_HOME")) {
     logger.warn("JAVA_HOME not set! Default JDK will be used.")
 }
 
-group = agronaGroup
-version = agronaVersion
-ext.isReleaseVersion = !version.endsWith("SNAPSHOT")
+def getConfigProperty(final String projectPropertyName, final String envVarName)
+{
+    String value = project.findProperty(projectPropertyName)
+    if (!value)
+    {
+        value = System.getenv(envVarName)
+        if (!value)
+        {
+            return null
+        }
+    }
+
+    value = value.trim()
+
+    return value ? value : null
+}
 
 ext {
-    group = agronaGroup
-    version = agronaVersion
+    isReleaseVersion = !agronaVersion.endsWith('-SNAPSHOT')
 
-    if (!project.hasProperty('ossrhUsername')) {
-        ossrhUsername = ''
-    }
+    ossrhReleasesRepoUrl = 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+    ossrhSnapshotsRepoUrl = 'https://oss.sonatype.org/content/repositories/snapshots/'
+    ossrhUsername = getConfigProperty('ossrhUsername', 'OSSRH_USERNAME')
+    ossrhPassword = getConfigProperty('ossrhPassword', 'OSSRH_PASSWORD')
 
-    if (!project.hasProperty('ossrhPassword')) {
-        ossrhPassword = ''
-    }
+    signingKey = getConfigProperty('signingKey', 'SIGNING_GPG_SECRET_KEY')         // NOTE: ASCII armored secret key
+    signingPassword = getConfigProperty('signingPassword', 'SIGNING_GPG_PASSWORD') // NOTE: Plain text
 }
 
 def projectPom = {
@@ -101,6 +120,18 @@ def projectPom = {
             email = 'nitsanw@yahoo.com'
             url = 'https://github.com/nitsanw'
         }
+        developer {
+            id = 'mikeb01'
+            name = 'Mike Barker'
+            email = 'mikeb01@gmail.com'
+            url = 'https://github.com/mikeb01'
+        }
+        developer {
+            id = 'vyazelenko'
+            name = 'Dmitry Vyazelenko'
+            email = 'vyazelenko@yahoo.com'
+            url = 'https://github.com/vyazelenko'
+        }
     }
 }
 
@@ -108,37 +139,58 @@ allprojects {
     repositories {
         mavenCentral()
     }
+
+    configurations.all {
+        resolutionStrategy {
+            failOnVersionConflict()
+
+            // Enforce dependency versions used by Agrona
+            force "net.bytebuddy:byte-buddy:${byteBuddyVersion}",
+                  "net.bytebuddy:byte-buddy-agent:${byteBuddyVersion}",
+                  "org.junit.jupiter:junit-jupiter-api:${junitVersion}",
+                  "org.junit.jupiter:junit-jupiter-params:${junitVersion}",
+                  "org.junit.jupiter:junit-jupiter-engine:${junitVersion}"
+        }
+    }
 }
 
 jar.enabled = false
 
 subprojects {
-    apply plugin: 'java'
     apply plugin: 'java-library'
-    apply plugin: 'maven'
     apply plugin: 'checkstyle'
-    apply plugin: 'signing'
     apply plugin: 'eclipse'
-    apply plugin: 'io.freefair.javadoc-links'
+
+    dependencies {
+        testImplementation "org.hamcrest:hamcrest:${hamcrestVersion}"
+        testImplementation "org.mockito:mockito-junit-jupiter:${mockitoVersion}"
+        testImplementation "org.junit.jupiter:junit-jupiter-api:${junitVersion}"
+        testImplementation "org.junit.jupiter:junit-jupiter-params:${junitVersion}"
+        testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:${junitVersion}"
+    }
 
     group = agronaGroup
     version = agronaVersion
 
-    jar.enabled = true
+    checkstyle.toolVersion = "${checkstyleVersion}"
 
-    dependencies {
-        checkstyle 'com.puppycrawl.tools:checkstyle:8.24'
-
-        testImplementation 'org.hamcrest:hamcrest:2.1'
-        testImplementation 'org.mockito:mockito-core:3.1.0'
-        testImplementation 'junit:junit:4.12'
+    tasks.withType(Sign) {
+        onlyIf {
+            isReleaseVersion && gradle.taskGraph.hasTask(tasks.publish)
+        }
     }
 
-    checkstyle.toolVersion = '8.24'
+    tasks.withType(Jar) {
+        enabled = true
+        includeEmptyDirs = false
+    }
 
-    compileJava {
-        sourceCompatibility = agronaJavaVersion
-        targetCompatibility = agronaJavaVersion
+    tasks.withType(JavaCompile) {
+        if (JavaVersion.current().isJava9Compatible()) {
+            options.compilerArgs.addAll(['--add-exports', 'java.base/java.lang.reflect=ALL-UNNAMED'])
+            options.compilerArgs.addAll(['--add-exports', 'java.base/sun.nio.ch=ALL-UNNAMED'])
+            options.compilerArgs.addAll(['--add-exports', 'jdk.unsupported/sun.misc=ALL-UNNAMED'])
+        }
         options.compilerArgs << '-XDignore.symbol.file' // Suppress warnings about using Unsafe
         if (externalJdk) {
             options.fork = true
@@ -151,92 +203,70 @@ subprojects {
         options.deprecation = true
     }
 
-    compileTestJava {
-        sourceCompatibility = agronaJavaVersion
-        targetCompatibility = agronaJavaVersion
-        options.encoding = 'UTF-8'
-        options.deprecation = true
-    }
-
     test {
-        if (JavaVersion.current().ordinal() >= JavaVersion.VERSION_1_9.ordinal()) {
+        if (JavaVersion.current().isJava9Compatible()) {
             jvmArgs('--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED')
             jvmArgs('--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED')
             jvmArgs('--add-exports', 'jdk.unsupported/sun.misc=ALL-UNNAMED')
         }
 
+        useJUnitPlatform()
+
         testLogging {
             showStandardStreams = true
             exceptionFormat = 'full'
         }
+
+        reports.html.enabled = false // Disable individual test reports
     }
 
     javadoc {
         title = '<h1>Agrona</h1>'
-        options.bottom = '<i>Copyright &#169; 2014-2019 Real Logic Ltd. All Rights Reserved.</i>'
-        if (JavaVersion.current().ordinal() >= JavaVersion.VERSION_1_10.ordinal()) {
+        options.bottom = '<i>Copyright &#169; 2014-2020 Real Logic Limited. All Rights Reserved.</i>'
+        options.encoding = 'UTF-8'
+        options.docEncoding = 'UTF-8'
+        options.charSet = 'UTF-8'
+        if (JavaVersion.current().isJava11Compatible()) {
+            options.links("https://docs.oracle.com/en/java/javase/${JavaVersion.current().majorVersion}/docs/api/")
+        } else {
+            options.links("https://docs.oracle.com/javase/${JavaVersion.current().majorVersion}/docs/api/")
+        }
+        if (JavaVersion.current().isJava10Compatible()) {
             options.addBooleanOption 'html5', true
         }
-    }
-
-    signing {
-        required { isReleaseVersion && gradle.taskGraph.hasTask("uploadArchives") }
-        sign configurations.archives
     }
 }
 
 project(':agrona') {
+    apply plugin: 'maven-publish'
+    apply plugin: 'signing'
+    apply plugin: 'biz.aQute.bnd.builder'
+
     dependencies {
-        testImplementation 'com.google.guava:guava-testlib:28.1-jre'
-    }
-
-    uploadArchives {
-        repositories {
-            mavenDeployer {
-                beforeDeployment {
-                    MavenDeployment deployment -> signing.signPom(deployment)
-                }
-
-                repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-                    authentication(userName: ossrhUsername, password: ossrhPassword)
-                }
-
-                snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-                    authentication(userName: ossrhUsername, password: ossrhPassword)
-                }
-
-                pom.project(projectPom)
-            }
+        testImplementation files('build/classes/java/generated')
+        testImplementation("com.google.guava:guava-testlib:${guavaTestLib}") {
+            exclude group: 'junit'
         }
+        // Compatibility with JUnit 4
+        testImplementation 'junit:junit:4.13'
+        testRuntimeOnly "org.junit.vintage:junit-vintage-engine:${junitVersion}"
     }
 
     def generatedDir = file("${buildDir}/generated-src")
     sourceSets {
-        generated.java.srcDir generatedDir
+        generated {
+            java.srcDir generatedDir
+            compileClasspath += sourceSets.main.runtimeClasspath
+        }
     }
 
-    compileGeneratedJava {
-        dependsOn 'generatePrimitiveSpecialisations'
-        sourceCompatibility = agronaJavaVersion
-        targetCompatibility = agronaJavaVersion
-        options.encoding = 'UTF-8'
-        options.deprecation = true
-        classpath += sourceSets.main.runtimeClasspath
-    }
+    compileGeneratedJava.dependsOn 'generatePrimitiveSpecialisations'
 
     task generatePrimitiveSpecialisations(type: JavaExec) {
         main = 'org.agrona.generation.SpecialisationGenerator'
         classpath = sourceSets.main.runtimeClasspath
         outputs.dir generatedDir
     }
-
-    task sourcesJar(type: Jar) {
-        archiveClassifier = 'sources'
-        from sourceSets.main.allSource
-        from sourceSets.generated.allSource
-    }
-
-    apply plugin: 'biz.aQute.bnd.builder'
 
     jar {
         from sourceSets.generated.output
@@ -257,42 +287,65 @@ project(':agrona') {
         """
     }
 
+    task sourcesJar(type: Jar) {
+        archiveClassifier.set('sources')
+        from sourceSets.main.allSource
+        from sourceSets.generated.allSource
+    }
+
     javadoc {
-        source += sourceSets.main.allJava
         source += sourceSets.generated.allJava
-        classpath = configurations.compile
     }
 
-    task javadocJar(type: Jar, dependsOn: javadoc) {
-        archiveClassifier = 'javadoc'
-        from javadoc.destinationDir
+    java {
+        withSourcesJar()
+        withJavadocJar()
     }
 
-    artifacts {
-        archives sourcesJar
-        archives javadocJar
-    }
-
-    sourceSets {
-        test {
-            compileClasspath += generated.output
-            runtimeClasspath += generated.output
+    publishing {
+        publications {
+            agrona(MavenPublication) {
+                from components.java
+                pom(projectPom)
+            }
         }
+
+        repositories {
+            maven {
+                name = 'MavenCentral'
+                url = !isReleaseVersion ? ossrhSnapshotsRepoUrl : ossrhReleasesRepoUrl
+                credentials {
+                    username = ossrhUsername
+                    password = ossrhPassword
+                }
+            }
+        }
+    }
+
+    signing {
+        if (null != signingKey)
+        {
+            useInMemoryPgpKeys(signingKey, signingPassword)
+        }
+        sign publishing.publications.agrona
     }
 }
 
 project(':agrona-agent') {
+    apply plugin: 'maven-publish'
+    apply plugin: 'signing'
     apply plugin: 'com.github.johnrengelman.shadow'
 
     dependencies {
         implementation project(':agrona')
-        implementation "net.bytebuddy:byte-buddy:1.9.10"
+        implementation "net.bytebuddy:byte-buddy:${byteBuddyVersion}"
     }
 
-    jar {
+    shadowJar {
+        archiveClassifier.set('')
         manifest.attributes(
             'Implementation-Title': 'Agrona',
-            'Implementation-Version': "${agronaVersion}",
+            'Implementation-Version': agronaVersion,
             'Implementation-Vendor': 'Real Logic Limited',
             'Premain-Class': 'org.agrona.agent.BufferAlignmentAgent',
             'Agent-Class': 'org.agrona.agent.BufferAlignmentAgent',
@@ -302,93 +355,88 @@ project(':agrona-agent') {
         )
     }
 
-    shadowJar {
-        dependencies {
-            exclude(project(':agrona'))
-        }
-
-        manifest.attributes(
-            'Implementation-Title': 'Agrona',
-            'Implementation-Version': "${agronaVersion}",
-            'Implementation-Vendor': 'Real Logic Limited',
-            'Premain-Class': 'org.agrona.agent.BufferAlignmentAgent',
-            'Agent-Class': 'org.agrona.agent.BufferAlignmentAgent',
-            'Can-Redefine-Classes': 'true',
-            'Can-Retransform-Classes': 'true',
-            'Automatic-Module-Name': 'org.agrona.agent.all'
-        )
-
-        relocate 'net.bytebuddy', 'org.agrona.shadow.net.bytebuddy'
-    }
-
-    uploadArchives {
-        repositories {
-            mavenDeployer {
-                beforeDeployment {
-                    MavenDeployment deployment -> signing.signPom(deployment)
-                }
-
-                repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-                    authentication(userName: ossrhUsername, password: ossrhPassword)
-                }
-
-                snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-                    authentication(userName: ossrhUsername, password: ossrhPassword)
-                }
-
-                pom.project(projectPom)
-            }
-        }
-    }
-
-    uploadShadow {
-        repositories {
-            mavenDeployer {
-                beforeDeployment {
-                    MavenDeployment deployment -> signing.signPom(deployment)
-                }
-
-                repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-                    authentication(userName: ossrhUsername, password: ossrhPassword)
-                }
-
-                snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-                    authentication(userName: ossrhUsername, password: ossrhPassword)
-                }
-
-                pom.project(projectPom)
-            }
-        }
-
-        mustRunAfter 'uploadArchives'
-    }
+    jar.finalizedBy shadowJar
 
     task sourcesJar(type: Jar) {
-        archiveClassifier = 'sources'
+        archiveClassifier.set('sources')
         from sourceSets.main.allSource
+        from project(':agrona').sourceSets.main.allSource
+        from project(':agrona').sourceSets.generated.allSource
+    }
+
+    javadoc {
+        source += sourceSets.main.allJava
+        source += project(':agrona').sourceSets.main.allJava
+        source += project(':agrona').sourceSets.generated.allJava
     }
 
     task javadocJar(type: Jar, dependsOn: javadoc) {
-        archiveClassifier = 'javadoc'
+        archiveClassifier.set('javadoc')
         from javadoc.destinationDir
     }
 
-    artifacts {
-        archives sourcesJar
-        archives javadocJar
+    publishing {
+        publications {
+            agronaAgent(MavenPublication) {
+                artifact shadowJar
+                artifact sourcesJar
+                artifact javadocJar
+                pom(projectPom)
+            }
+        }
+        repositories {
+            maven {
+                name = 'MavenCentral'
+                url = !isReleaseVersion ? ossrhSnapshotsRepoUrl : ossrhReleasesRepoUrl
+                credentials {
+                    username = ossrhUsername
+                    password = ossrhPassword
+                }
+            }
+        }
     }
 
     signing {
-        required { isReleaseVersion && gradle.taskGraph.hasTask("uploadArchives") }
-        sign configurations.shadow
+        if (null != signingKey)
+        {
+            useInMemoryPgpKeys(signingKey, signingPassword)
+        }
+        sign publishing.publications.agronaAgent
     }
 }
 
-task uploadToMavenCentral {
-    dependsOn 'agrona:uploadArchives', 'agrona-agent:uploadArchives', 'agrona-agent:uploadShadow'
+project(':agrona-benchmarks') {
+    apply plugin: 'com.github.johnrengelman.shadow'
+
+    dependencies {
+        implementation "org.openjdk.jmh:jmh-core:${jmhVersion}"
+        annotationProcessor "org.openjdk.jmh:jmh-generator-annprocess:${jmhVersion}"
+        implementation project(':agrona')
+    }
+
+    shadowJar {
+        archiveFileName = 'benchmarks.jar'
+        archiveClassifier.set('benchmarks')
+        manifest.attributes('Main-Class': 'org.openjdk.jmh.Main')
+    }
+
+    jar.finalizedBy shadowJar
+}
+
+task runBenchmarks(type: Exec, dependsOn: 'agrona-benchmarks:shadowJar') {
+    commandLine 'java',
+        '-jar', 'agrona-benchmarks/build/libs/benchmarks.jar',
+        '-jvmArgs', '-Dagrona.disable.bounds.checks=true -XX:+UseParallelOldGC',
+        '-w', '1s', '-r', '1s','-wi', '3', '-i', '5', '-tu', 'ns', '-f', '5'
+}
+
+task testReport(type: TestReport) {
+    destinationDir = file("$buildDir/reports/allTests")
+    // Include the results from the `test` task in all subprojects
+    reportOn subprojects*.test
 }
 
 wrapper {
-    gradleVersion = '5.6.2'
+    gradleVersion = '6.6.1'
     distributionType = 'ALL'
 }

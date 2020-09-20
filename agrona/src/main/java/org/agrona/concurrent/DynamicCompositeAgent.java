@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,9 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class DynamicCompositeAgent implements Agent
 {
+    /**
+     * {@link Enum} to indicate the current status of a {@link DynamicCompositeAgent}.
+     */
     public enum Status
     {
         /**
@@ -176,7 +179,7 @@ public class DynamicCompositeAgent implements Agent
             {
                 agent.onClose();
             }
-            catch (final Exception ex)
+            catch (final Throwable ex)
             {
                 if (ce == null)
                 {
@@ -289,7 +292,7 @@ public class DynamicCompositeAgent implements Agent
         {
             agent.onStart();
         }
-        catch (final RuntimeException ex)
+        catch (final Throwable ex)
         {
             agent.onClose();
             throw ex;

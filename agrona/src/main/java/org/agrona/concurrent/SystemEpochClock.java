@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,11 @@ package org.agrona.concurrent;
  */
 public class SystemEpochClock implements EpochClock
 {
+    /**
+     * As there is no instance state then this object can be used to save on allocation.
+     */
+    public static final SystemEpochClock INSTANCE = new SystemEpochClock();
+
     public long time()
     {
         return System.currentTimeMillis();

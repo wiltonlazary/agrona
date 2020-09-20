@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +15,22 @@
  */
 package org.agrona.collections;
 
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;
 import java.util.Map.Entry;
 
 import static org.agrona.collections.Int2IntHashMap.MIN_CAPACITY;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 
 public class Int2IntHashMapNotAvoidingAllocationTest extends Int2IntHashMapTest
 {
-    public Int2IntHashMapNotAvoidingAllocationTest()
+    @BeforeEach
+    void before()
     {
-        super(new Int2IntHashMap(MIN_CAPACITY, Hashing.DEFAULT_LOAD_FACTOR, MISSING_VALUE, false));
+        map = new Int2IntHashMap(MIN_CAPACITY, Hashing.DEFAULT_LOAD_FACTOR, MISSING_VALUE, false);
     }
 
     @Test

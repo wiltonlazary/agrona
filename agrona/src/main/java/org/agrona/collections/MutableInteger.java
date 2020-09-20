@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ public class MutableInteger extends Number implements Comparable<MutableInteger>
 
     public long longValue()
     {
-        return (long)value;
+        return value;
     }
 
     public float floatValue()
@@ -71,7 +71,49 @@ public class MutableInteger extends Number implements Comparable<MutableInteger>
 
     public double doubleValue()
     {
-        return (double)value;
+        return value;
+    }
+
+    public void increment()
+    {
+        value++;
+    }
+
+    public int incrementAndGet()
+    {
+        return ++value;
+    }
+
+    public int getAndIncrement()
+    {
+        return value++;
+    }
+
+    public void decrement()
+    {
+        value--;
+    }
+
+    public int decrementAndGet()
+    {
+        return --value;
+    }
+
+    public int getAndDecrement()
+    {
+        return value--;
+    }
+
+    public int getAndAdd(final int delta)
+    {
+        final int result = value;
+        value += delta;
+        return result;
+    }
+
+    public int addAndGet(final int delta)
+    {
+        return value += delta;
     }
 
     public boolean equals(final Object o)
@@ -108,6 +150,6 @@ public class MutableInteger extends Number implements Comparable<MutableInteger>
 
     public static int compare(final int lhs, final int rhs)
     {
-        return lhs < rhs ? -1 : (lhs == rhs ? 0 : 1);
+        return Integer.compare(lhs, rhs);
     }
 }

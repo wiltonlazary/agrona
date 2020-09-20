@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ import static net.bytebuddy.matcher.ElementMatchers.nameContains;
 import static net.bytebuddy.matcher.ElementMatchers.nameMatches;
 import static net.bytebuddy.matcher.ElementMatchers.not;
 
-import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
 
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import org.agrona.DirectBuffer;
 import org.agrona.agent.BufferAlignmentInterceptor.CharVerifier;
 import org.agrona.agent.BufferAlignmentInterceptor.DoubleVerifier;
@@ -44,23 +44,35 @@ import net.bytebuddy.matcher.ElementMatchers;
 import net.bytebuddy.utility.JavaModule;
 
 /**
- * An agent that verifies that all memory accesses in {@link DirectBuffer} implementations are aligned.
+ * A Java agent that verifies that all memory accesses in {@link DirectBuffer} implementations are aligned.
  * <p>
  * Unaligned accesses can be slower or even make the JVM crash on some architectures.
  * <p>
  * Using this agent will avoid such crashes, but it has a performance overhead and should only be used for testing
- * and debugging
+ * and debugging.
  */
 public class BufferAlignmentAgent
 {
-    private static ClassFileTransformer alignmentTransformer;
+    private static ResettableClassFileTransformer alignmentTransformer;
     private static Instrumentation instrumentation;
 
+    /**
+     * Invoked when the agent is launched with the JVM and before the main application.
+     *
+     * @param agentArgs       ignored for buffer alignment agent.
+     * @param instrumentation for adding bytecode to classes.
+     */
     public static void premain(final String agentArgs, final Instrumentation instrumentation)
     {
         agent(false, instrumentation);
     }
 
+    /**
+     * Invoked when the agent is attached to an already running application.
+     *
+     * @param agentArgs       ignored for buffer alignment agent.
+     * @param instrumentation for adding bytecode to classes.
+     */
     public static void agentmain(final String agentArgs, final Instrumentation instrumentation)
     {
         agent(true, instrumentation);
@@ -75,11 +87,10 @@ public class BufferAlignmentAgent
             .or(nameMatches(".*String[^W].*").and(not(ElementMatchers.takesArguments(int.class, int.class))));
 
         alignmentTransformer = new AgentBuilder.Default(new ByteBuddy().with(TypeValidation.DISABLED))
-            .with(LISTENER)
+            .with(new AgentBuilderListener())
             .disableClassFormatChanges()
             .with(shouldRedefine ?
-                AgentBuilder.RedefinitionStrategy.RETRANSFORMATION :
-                AgentBuilder.RedefinitionStrategy.DISABLED)
+                AgentBuilder.RedefinitionStrategy.RETRANSFORMATION : AgentBuilder.RedefinitionStrategy.DISABLED)
             .type(isSubTypeOf(DirectBuffer.class).and(not(isInterface())))
             .transform((builder, typeDescription, classLoader, module) -> builder
                 .visit(to(LongVerifier.class).on(nameContains("Long")))
@@ -91,7 +102,20 @@ public class BufferAlignmentAgent
             .installOn(instrumentation);
     }
 
-    private static final AgentBuilder.Listener LISTENER = new AgentBuilder.Listener()
+    /**
+     * Remove the bytecode transformer and associated bytecode weaving so the alignment checks are not made.
+     */
+    public static synchronized void removeTransformer()
+    {
+        if (alignmentTransformer != null)
+        {
+            alignmentTransformer.reset(instrumentation, AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
+            alignmentTransformer = null;
+            BufferAlignmentAgent.instrumentation = null;
+        }
+    }
+
+    static class AgentBuilderListener implements AgentBuilder.Listener
     {
         public void onDiscovery(
             final String typeName,
@@ -125,8 +149,8 @@ public class BufferAlignmentAgent
             final boolean loaded,
             final Throwable throwable)
         {
-            System.out.println("ERROR " + typeName);
-            throwable.printStackTrace(System.out);
+            System.err.println("ERROR " + typeName);
+            throwable.printStackTrace(System.err);
         }
 
         public void onComplete(
@@ -135,19 +159,6 @@ public class BufferAlignmentAgent
             final JavaModule module,
             final boolean loaded)
         {
-        }
-    };
-
-    public static synchronized void removeTransformer()
-    {
-        if (alignmentTransformer != null)
-        {
-            instrumentation.removeTransformer(alignmentTransformer);
-            instrumentation.removeTransformer(new AgentBuilder.Default()
-                .type(isSubTypeOf(DirectBuffer.class).and(not(isInterface())))
-                .transform(AgentBuilder.Transformer.NoOp.INSTANCE).installOn(instrumentation));
-            alignmentTransformer = null;
-            instrumentation = null;
         }
     }
 }

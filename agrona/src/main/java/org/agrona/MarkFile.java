@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -356,28 +356,34 @@ public class MarkFile implements AutoCloseable
         final long deadlineMs,
         final EpochClock epochClock)
     {
-        try (FileChannel fileChannel = FileChannel.open(markFile.toPath(), READ, WRITE))
+        while (true)
         {
-            while (fileChannel.size() < 4)
+            try (FileChannel fileChannel = FileChannel.open(markFile.toPath(), READ, WRITE))
             {
-                if (epochClock.time() > deadlineMs)
+                final long size = fileChannel.size();
+                if (size < (SIZE_OF_INT + SIZE_OF_LONG))
                 {
-                    throw new IllegalStateException("Mark file is created but not populated");
+                    if (epochClock.time() > deadlineMs)
+                    {
+                        throw new IllegalStateException("Mark file is created but not populated");
+                    }
+
+                    fileChannel.close();
+                    sleep(16);
+                    continue;
                 }
 
-                sleep(16);
-            }
+                if (null != logger)
+                {
+                    logger.accept("INFO: Mark file exists: " + markFile);
+                }
 
-            if (null != logger)
+                return fileChannel.map(READ_WRITE, 0, size);
+            }
+            catch (final IOException ex)
             {
-                logger.accept("INFO: Mark file exists: " + markFile);
+                throw new IllegalStateException("cannot open mark file for reading", ex);
             }
-
-            return fileChannel.map(READ_WRITE, 0, fileChannel.size());
-        }
-        catch (final IOException ex)
-        {
-            throw new IllegalStateException("cannot open mark file for reading", ex);
         }
     }
 
@@ -390,10 +396,9 @@ public class MarkFile implements AutoCloseable
         final IntConsumer versionCheck,
         final Consumer<String> logger)
     {
-        final long startTimeMs = epochClock.time();
-        final long deadlineMs = startTimeMs + timeoutMs;
+        final long deadlineMs = epochClock.time() + timeoutMs;
 
-        while (!markFile.exists() || markFile.length() <= 0)
+        while (!markFile.exists() || markFile.length() < (timestampFieldOffset + SIZE_OF_LONG))
         {
             if (epochClock.time() > deadlineMs)
             {
@@ -404,29 +409,41 @@ public class MarkFile implements AutoCloseable
         }
 
         final MappedByteBuffer byteBuffer = waitForFileMapping(logger, markFile, deadlineMs, epochClock);
-        final UnsafeBuffer buffer = new UnsafeBuffer(byteBuffer);
-
-        int version;
-        while (0 == (version = buffer.getIntVolatile(versionFieldOffset)))
+        if (byteBuffer.capacity() < (timestampFieldOffset + SIZE_OF_LONG))
         {
-            if (epochClock.time() > deadlineMs)
-            {
-                throw new IllegalStateException("Mark file is created but not initialised");
-            }
-
-            sleep(1);
+            throw new IllegalStateException("Mark file mapping is to small: capacity=" + byteBuffer.capacity());
         }
 
-        versionCheck.accept(version);
-
-        while (0 == buffer.getLongVolatile(timestampFieldOffset))
+        try
         {
-            if (epochClock.time() > deadlineMs)
+            final UnsafeBuffer buffer = new UnsafeBuffer(byteBuffer);
+            int version;
+            while (0 == (version = buffer.getIntVolatile(versionFieldOffset)))
             {
-                throw new IllegalStateException("No non zero timestamp detected");
+                if (epochClock.time() > deadlineMs)
+                {
+                    throw new IllegalStateException("Mark file is created but not initialised");
+                }
+
+                sleep(1);
             }
 
-            sleep(1);
+            versionCheck.accept(version);
+
+            while (0 == buffer.getLongVolatile(timestampFieldOffset))
+            {
+                if (epochClock.time() > deadlineMs)
+                {
+                    throw new IllegalStateException("No non zero timestamp detected");
+                }
+
+                sleep(1);
+            }
+        }
+        catch (final Throwable ex)
+        {
+            IoUtil.unmap(byteBuffer);
+            LangUtil.rethrowUnchecked(ex);
         }
 
         return byteBuffer;
@@ -462,8 +479,7 @@ public class MarkFile implements AutoCloseable
                 versionCheck.accept(version);
 
                 final long timestampMs = buffer.getLongVolatile(timestampFieldOffset);
-                final long nowMs = epochClock.time();
-                final long timestampAgeMs = nowMs - timestampMs;
+                final long timestampAgeMs = epochClock.time() - timestampMs;
 
                 if (null != logger)
                 {
@@ -521,8 +537,7 @@ public class MarkFile implements AutoCloseable
 
         final UnsafeBuffer buffer = new UnsafeBuffer(byteBuffer);
 
-        final long startTimeMs = epochClock.time();
-        final long deadlineMs = startTimeMs + timeoutMs;
+        final long deadlineMs = epochClock.time() + timeoutMs;
         int version;
         while (0 == (version = buffer.getIntVolatile(versionFieldOffset)))
         {
@@ -548,14 +563,6 @@ public class MarkFile implements AutoCloseable
         return timestampAgeMs <= timeoutMs;
     }
 
-    private static void validateOffsets(final int versionFieldOffset, final int timestampFieldOffset)
-    {
-        if ((versionFieldOffset + SIZE_OF_INT) > timestampFieldOffset)
-        {
-            throw new IllegalArgumentException("version field must precede the timestamp field");
-        }
-    }
-
     protected static void sleep(final long durationMs)
     {
         try
@@ -565,6 +572,14 @@ public class MarkFile implements AutoCloseable
         catch (final InterruptedException ignore)
         {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void validateOffsets(final int versionFieldOffset, final int timestampFieldOffset)
+    {
+        if ((versionFieldOffset + SIZE_OF_INT) > timestampFieldOffset)
+        {
+            throw new IllegalArgumentException("version field must precede the timestamp field");
         }
     }
 }

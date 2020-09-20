@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package org.agrona.agent;
 /**
  * Runtime Exception thrown by {@link BufferAlignmentAgent} when an unaligned memory access is detected.
  * <p>
- * Package-protected to discourage catching since this agent should be used only for testing and debugging
+ * Package-protected to discourage catching since this as agent should be used only for testing and debugging.
  */
 class BufferAlignmentException extends RuntimeException
 {

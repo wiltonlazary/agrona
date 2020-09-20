@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,16 @@ package org.agrona.collections;
 /**
  * Hashing functions for applying to integers.
  */
-public class Hashing
+public final class Hashing
 {
     /**
      * Default load factor to be used in open addressing hashed data structures.
      */
     public static final float DEFAULT_LOAD_FACTOR = 0.55f;
+
+    private Hashing()
+    {
+    }
 
     /**
      * Generate a hash for an int value. This is a no op.
@@ -65,16 +69,15 @@ public class Hashing
     }
 
     /**
-     * Generate a hash for a K value.
+     * Generate a hash for an object.
      *
-     * @param <K> is the type of value
      * @param value to be hashed.
      * @param mask  mask to be applied that must be a power of 2 - 1.
      * @return the hash of the value.
      */
-    public static <K> int hash(final K value, final int mask)
+    public static int hash(final Object value, final int mask)
     {
-        final int hash = value.hashCode();
+        final int hash = value.hashCode() * 31;
 
         return hash & mask;
     }

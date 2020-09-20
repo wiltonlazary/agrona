@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -386,15 +386,18 @@ public class ExpandableRingBuffer
         else if (tailOffset >= headOffset)
         {
             final int toEndRemaining = capacity - tailOffset;
-            if (alignedLength > toEndRemaining && alignedLength <= (totalRemaining - toEndRemaining))
+            if (alignedLength > toEndRemaining)
             {
-                buffer.putInt(tailOffset + MESSAGE_LENGTH_OFFSET, toEndRemaining);
-                buffer.putInt(tailOffset + MESSAGE_TYPE_OFFSET, MESSAGE_TYPE_PADDING);
-                tail += toEndRemaining;
-            }
-            else
-            {
-                resize(alignedLength);
+                if (alignedLength <= (totalRemaining - toEndRemaining))
+                {
+                    buffer.putInt(tailOffset + MESSAGE_LENGTH_OFFSET, toEndRemaining);
+                    buffer.putInt(tailOffset + MESSAGE_TYPE_OFFSET, MESSAGE_TYPE_PADDING);
+                    tail += toEndRemaining;
+                }
+                else
+                {
+                    resize(alignedLength);
+                }
             }
         }
 

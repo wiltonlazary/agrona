@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,9 @@
  */
 package org.agrona.concurrent;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 public class CompositeAgentTest
@@ -33,18 +32,18 @@ public class CompositeAgentTest
         }
     }
 
-    private final Agent[] agents = new Agent[]{mock(Agent.class), mock(Agent.class), mock(Agent.class)};
+    private final Agent[] agents = new Agent[]{ mock(Agent.class), mock(Agent.class), mock(Agent.class) };
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldNotAcceptEmptyList()
     {
-        final CompositeAgent ignore = new CompositeAgent();
+        assertThrows(IllegalArgumentException.class, CompositeAgent::new);
     }
 
-    @Test(expected = NullPointerException.class)
+    @Test
     public void shouldNotAcceptNullAgents()
     {
-        final CompositeAgent ignore = new CompositeAgent(agents[0], null, agents[1]);
+        assertThrows(NullPointerException.class, () -> new CompositeAgent(agents[0], null, agents[1]));
     }
 
     @Test
@@ -82,6 +81,7 @@ public class CompositeAgentTest
             final Agent agent = agents[index];
             doThrow(new AgentException(index)).when(agent).onStart();
         }
+
         try
         {
             compositeAgent.onStart();
@@ -93,11 +93,11 @@ public class CompositeAgentTest
                 assertTrue(suppressed instanceof AgentException);
             }
         }
+
         for (final Agent agent : agents)
         {
             verify(agent).onStart();
         }
-
 
         for (int i = 0; i < agents.length; i++)
         {
@@ -105,6 +105,7 @@ public class CompositeAgentTest
             final Agent agent = agents[index];
             doThrow(new AgentException(index)).when(agent).doWork();
         }
+
         for (int i = 0; i < agents.length; i++)
         {
             try
@@ -116,6 +117,7 @@ public class CompositeAgentTest
                 assertEquals(i, e.index);
             }
         }
+
         for (final Agent agent : agents)
         {
             verify(agent).doWork();
@@ -127,6 +129,7 @@ public class CompositeAgentTest
             final Agent agent = agents[index];
             doThrow(new AgentException(index)).when(agent).onClose();
         }
+
         try
         {
             compositeAgent.onClose();
@@ -138,6 +141,7 @@ public class CompositeAgentTest
                 assertTrue(suppressed instanceof AgentException);
             }
         }
+
         for (final Agent agent : agents)
         {
             verify(agent).onClose();

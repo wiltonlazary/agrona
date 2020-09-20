@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import org.agrona.*;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Arrays;
 
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -53,8 +52,6 @@ public class UnsafeBuffer implements AtomicBuffer
 
     public static final String DISABLE_BOUNDS_CHECKS_PROP_NAME = "agrona.disable.bounds.checks";
     public static final boolean SHOULD_BOUNDS_CHECK = !Boolean.getBoolean(DISABLE_BOUNDS_CHECKS_PROP_NAME);
-    public static final boolean SHOULD_PRINT_ARRAY_CONTENT =
-        !Boolean.getBoolean(DISABLE_ARRAY_CONTENT_PRINTOUT_PROP_NAME);
 
     private long addressOffset;
     private int capacity;
@@ -164,17 +161,7 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            final int bufferLength = buffer.length;
-            if (offset != 0 && (offset < 0 || offset > bufferLength - 1))
-            {
-                throw new IllegalArgumentException("offset=" + offset + " not valid for buffer.length=" + bufferLength);
-            }
-
-            if (length < 0 || length > bufferLength - offset)
-            {
-                throw new IllegalArgumentException(
-                    "offset=" + offset + " length=" + length + " not valid for buffer.length=" + bufferLength);
-            }
+            boundsCheckWrap(offset, length, buffer.length);
         }
 
         addressOffset = ARRAY_BASE_OFFSET + offset;
@@ -212,17 +199,7 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            final int bufferCapacity = buffer.capacity();
-            if (offset != 0 && (offset < 0 || offset > bufferCapacity - 1))
-            {
-                throw new IllegalArgumentException("offset=" + offset + " not valid for capacity=" + bufferCapacity);
-            }
-
-            if (length < 0 || length > bufferCapacity - offset)
-            {
-                throw new IllegalArgumentException(
-                    "offset=" + offset + " length=" + length + " not valid for capacity=" + bufferCapacity);
-            }
+            boundsCheckWrap(offset, length, buffer.capacity());
         }
 
         if (buffer != byteBuffer)
@@ -266,17 +243,7 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            final int bufferCapacity = buffer.capacity();
-            if (offset != 0 && (offset < 0 || offset > bufferCapacity - 1))
-            {
-                throw new IllegalArgumentException("offset=" + offset + " not valid for capacity=" + bufferCapacity);
-            }
-
-            if (length < 0 || length > bufferCapacity - offset)
-            {
-                throw new IllegalArgumentException(
-                    "offset=" + offset + " length=" + length + " not valid for capacity=" + bufferCapacity);
-            }
+            boundsCheckWrap(offset, length, buffer.capacity());
         }
 
         addressOffset = buffer.addressOffset() + offset;
@@ -824,11 +791,6 @@ public class UnsafeBuffer implements AtomicBuffer
             boundsCheck(index);
         }
 
-        return getByteWithoutBoundsCheck(index);
-    }
-
-    private byte getByteWithoutBoundsCheck(final int index)
-    {
         return UNSAFE.getByte(byteArray, addressOffset + index);
     }
 
@@ -839,11 +801,6 @@ public class UnsafeBuffer implements AtomicBuffer
             boundsCheck(index);
         }
 
-        putByteWithoutBoundsCheck(index, value);
-    }
-
-    private void putByteWithoutBoundsCheck(final int index, final byte value)
-    {
         UNSAFE.putByte(byteArray, addressOffset + index, value);
     }
 
@@ -907,7 +864,7 @@ public class UnsafeBuffer implements AtomicBuffer
         {
             lengthCheck(length);
             boundsCheck0(index, length);
-            BufferUtil.boundsCheck(dstBuffer, (long)dstOffset, length);
+            BufferUtil.boundsCheck(dstBuffer, dstOffset, length);
         }
 
         final byte[] dstByteArray;
@@ -1077,7 +1034,7 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index, SIZE_OF_INT);
+            boundsCheck0(index, STR_HEADER_LEN);
         }
 
         final int length = UNSAFE.getInt(byteArray, addressOffset + index);
@@ -1087,7 +1044,7 @@ public class UnsafeBuffer implements AtomicBuffer
 
     public int getStringAscii(final int index, final Appendable appendable)
     {
-        boundsCheck0(index, SIZE_OF_INT);
+        boundsCheck0(index, STR_HEADER_LEN);
 
         final int length = UNSAFE.getInt(byteArray, addressOffset + index);
 
@@ -1098,7 +1055,7 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index, SIZE_OF_INT);
+            boundsCheck0(index, STR_HEADER_LEN);
         }
 
         int bits = UNSAFE.getInt(byteArray, addressOffset + index);
@@ -1114,7 +1071,7 @@ public class UnsafeBuffer implements AtomicBuffer
 
     public int getStringAscii(final int index, final Appendable appendable, final ByteOrder byteOrder)
     {
-        boundsCheck0(index, SIZE_OF_INT);
+        boundsCheck0(index, STR_HEADER_LEN);
 
         int bits = UNSAFE.getInt(byteArray, addressOffset + index);
         if (NATIVE_BYTE_ORDER != byteOrder)
@@ -1131,11 +1088,11 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index + SIZE_OF_INT, length);
+            boundsCheck0(index + STR_HEADER_LEN, length);
         }
 
         final byte[] dst = new byte[length];
-        UNSAFE.copyMemory(byteArray, addressOffset + index + SIZE_OF_INT, dst, ARRAY_BASE_OFFSET, length);
+        UNSAFE.copyMemory(byteArray, addressOffset + index + STR_HEADER_LEN, dst, ARRAY_BASE_OFFSET, length);
 
         return new String(dst, US_ASCII);
     }
@@ -1144,12 +1101,12 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index, length + SIZE_OF_INT);
+            boundsCheck0(index, length + STR_HEADER_LEN);
         }
 
         try
         {
-            for (int i = index + SIZE_OF_INT, limit = index + SIZE_OF_INT + length; i < limit; i++)
+            for (int i = index + STR_HEADER_LEN, limit = index + STR_HEADER_LEN + length; i < limit; i++)
             {
                 final char c = (char)UNSAFE.getByte(byteArray, addressOffset + i);
                 appendable.append(c > 127 ? '?' : c);
@@ -1169,7 +1126,7 @@ public class UnsafeBuffer implements AtomicBuffer
 
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index, length + SIZE_OF_INT);
+            boundsCheck0(index, length + STR_HEADER_LEN);
         }
 
         UNSAFE.putInt(byteArray, addressOffset + index, length);
@@ -1182,10 +1139,10 @@ public class UnsafeBuffer implements AtomicBuffer
                 c = '?';
             }
 
-            UNSAFE.putByte(byteArray, addressOffset + SIZE_OF_INT + index + i, (byte)c);
+            UNSAFE.putByte(byteArray, addressOffset + STR_HEADER_LEN + index + i, (byte)c);
         }
 
-        return SIZE_OF_INT + length;
+        return STR_HEADER_LEN + length;
     }
 
     public int putStringAscii(final int index, final String value, final ByteOrder byteOrder)
@@ -1194,7 +1151,7 @@ public class UnsafeBuffer implements AtomicBuffer
 
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index, length + SIZE_OF_INT);
+            boundsCheck0(index, length + STR_HEADER_LEN);
         }
 
         int bits = length;
@@ -1213,10 +1170,10 @@ public class UnsafeBuffer implements AtomicBuffer
                 c = '?';
             }
 
-            UNSAFE.putByte(byteArray, addressOffset + SIZE_OF_INT + index + i, (byte)c);
+            UNSAFE.putByte(byteArray, addressOffset + STR_HEADER_LEN + index + i, (byte)c);
         }
 
-        return SIZE_OF_INT + length;
+        return STR_HEADER_LEN + length;
     }
 
     public String getStringWithoutLengthAscii(final int index, final int length)
@@ -1307,7 +1264,7 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index, SIZE_OF_INT);
+            boundsCheck0(index, STR_HEADER_LEN);
         }
 
         final int length = UNSAFE.getInt(byteArray, addressOffset + index);
@@ -1319,7 +1276,7 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index, SIZE_OF_INT);
+            boundsCheck0(index, STR_HEADER_LEN);
         }
 
         int bits = UNSAFE.getInt(byteArray, addressOffset + index);
@@ -1337,11 +1294,11 @@ public class UnsafeBuffer implements AtomicBuffer
     {
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index + SIZE_OF_INT, length);
+            boundsCheck0(index + STR_HEADER_LEN, length);
         }
 
         final byte[] stringInBytes = new byte[length];
-        UNSAFE.copyMemory(byteArray, addressOffset + index + SIZE_OF_INT, stringInBytes, ARRAY_BASE_OFFSET, length);
+        UNSAFE.copyMemory(byteArray, addressOffset + index + STR_HEADER_LEN, stringInBytes, ARRAY_BASE_OFFSET, length);
 
         return new String(stringInBytes, UTF_8);
     }
@@ -1366,13 +1323,13 @@ public class UnsafeBuffer implements AtomicBuffer
 
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index, SIZE_OF_INT + bytes.length);
+            boundsCheck0(index, STR_HEADER_LEN + bytes.length);
         }
 
         UNSAFE.putInt(byteArray, addressOffset + index, bytes.length);
-        UNSAFE.copyMemory(bytes, ARRAY_BASE_OFFSET, byteArray, addressOffset + index + SIZE_OF_INT, bytes.length);
+        UNSAFE.copyMemory(bytes, ARRAY_BASE_OFFSET, byteArray, addressOffset + index + STR_HEADER_LEN, bytes.length);
 
-        return SIZE_OF_INT + bytes.length;
+        return STR_HEADER_LEN + bytes.length;
     }
 
     public int putStringUtf8(final int index, final String value, final ByteOrder byteOrder, final int maxEncodedLength)
@@ -1385,7 +1342,7 @@ public class UnsafeBuffer implements AtomicBuffer
 
         if (SHOULD_BOUNDS_CHECK)
         {
-            boundsCheck0(index, SIZE_OF_INT + bytes.length);
+            boundsCheck0(index, STR_HEADER_LEN + bytes.length);
         }
 
         int bits = bytes.length;
@@ -1395,9 +1352,9 @@ public class UnsafeBuffer implements AtomicBuffer
         }
 
         UNSAFE.putInt(byteArray, addressOffset + index, bits);
-        UNSAFE.copyMemory(bytes, ARRAY_BASE_OFFSET, byteArray, addressOffset + index + SIZE_OF_INT, bytes.length);
+        UNSAFE.copyMemory(bytes, ARRAY_BASE_OFFSET, byteArray, addressOffset + index + STR_HEADER_LEN, bytes.length);
 
-        return SIZE_OF_INT + bytes.length;
+        return STR_HEADER_LEN + bytes.length;
     }
 
     public String getStringWithoutLengthUtf8(final int index, final int length)
@@ -1435,11 +1392,16 @@ public class UnsafeBuffer implements AtomicBuffer
             boundsCheck0(index, length);
         }
 
+        if (length <= 0)
+        {
+            throw new AsciiNumberFormatException("empty string: index=" + index + " length=" + length);
+        }
+
         final int end = index + length;
         int tally = 0;
         for (int i = index; i < end; i++)
         {
-            tally = (tally * 10) + AsciiEncoding.getDigit(i, getByteWithoutBoundsCheck(i));
+            tally = (tally * 10) + AsciiEncoding.getDigit(i, UNSAFE.getByte(byteArray, addressOffset + i));
         }
 
         return tally;
@@ -1452,11 +1414,16 @@ public class UnsafeBuffer implements AtomicBuffer
             boundsCheck0(index, length);
         }
 
+        if (length <= 0)
+        {
+            throw new AsciiNumberFormatException("empty string: index=" + index + " length=" + length);
+        }
+
         final int end = index + length;
         long tally = 0;
         for (int i = index; i < end; i++)
         {
-            tally = (tally * 10) + AsciiEncoding.getDigit(i, getByteWithoutBoundsCheck(i));
+            tally = (tally * 10) + AsciiEncoding.getDigit(i, UNSAFE.getByte(byteArray, addressOffset + i));
         }
 
         return tally;
@@ -1469,8 +1436,17 @@ public class UnsafeBuffer implements AtomicBuffer
             boundsCheck0(index, length);
         }
 
+        if (length <= 0)
+        {
+            throw new AsciiNumberFormatException("empty string: index=" + index + " length=" + length);
+        }
+        else if (1 == length)
+        {
+            return AsciiEncoding.getDigit(index, UNSAFE.getByte(byteArray, addressOffset + index));
+        }
+
         final int endExclusive = index + length;
-        final int first = getByteWithoutBoundsCheck(index);
+        final int first = UNSAFE.getByte(byteArray, addressOffset + index);
         int i = index;
 
         if (first == MINUS_SIGN)
@@ -1481,7 +1457,7 @@ public class UnsafeBuffer implements AtomicBuffer
         int tally = 0;
         for (; i < endExclusive; i++)
         {
-            tally = (tally * 10) + AsciiEncoding.getDigit(i, getByteWithoutBoundsCheck(i));
+            tally = (tally * 10) + AsciiEncoding.getDigit(i, UNSAFE.getByte(byteArray, addressOffset + i));
         }
 
         if (first == MINUS_SIGN)
@@ -1499,8 +1475,17 @@ public class UnsafeBuffer implements AtomicBuffer
             boundsCheck0(index, length);
         }
 
+        if (length <= 0)
+        {
+            throw new AsciiNumberFormatException("empty string: index=" + index + " length=" + length);
+        }
+        else if (1 == length)
+        {
+            return AsciiEncoding.getDigit(index, UNSAFE.getByte(byteArray, addressOffset + index));
+        }
+
         final int endExclusive = index + length;
-        final int first = getByteWithoutBoundsCheck(index);
+        final int first = UNSAFE.getByte(byteArray, addressOffset + index);
         int i = index;
 
         if (first == MINUS_SIGN)
@@ -1511,7 +1496,7 @@ public class UnsafeBuffer implements AtomicBuffer
         long tally = 0;
         for (; i < endExclusive; i++)
         {
-            tally = (tally * 10) + AsciiEncoding.getDigit(i, getByteWithoutBoundsCheck(i));
+            tally = (tally * 10) + AsciiEncoding.getDigit(i, UNSAFE.getByte(byteArray, addressOffset + i));
         }
 
         if (first == MINUS_SIGN)
@@ -1559,7 +1544,7 @@ public class UnsafeBuffer implements AtomicBuffer
         {
             final int remainder = quotient % 10;
             quotient = quotient / 10;
-            putByteWithoutBoundsCheck(i + start, (byte)(ZERO + remainder));
+            UNSAFE.putByte(byteArray, addressOffset + i + start, (byte)(ZERO + remainder));
             i--;
         }
 
@@ -1587,7 +1572,7 @@ public class UnsafeBuffer implements AtomicBuffer
         {
             final int remainder = quotient % 10;
             quotient = quotient / 10;
-            putByteWithoutBoundsCheck(i + index, (byte)(ZERO + remainder));
+            UNSAFE.putByte(byteArray, addressOffset + i + index, (byte)(ZERO + remainder));
             i--;
         }
 
@@ -1607,7 +1592,7 @@ public class UnsafeBuffer implements AtomicBuffer
 
         if (remainder != 0)
         {
-            throw new NumberFormatException(String.format("Cannot write %d in %d bytes", value, length));
+            throw new NumberFormatException("Cannot write " + value + " in " + length + " bytes");
         }
     }
 
@@ -1647,7 +1632,7 @@ public class UnsafeBuffer implements AtomicBuffer
         {
             final long remainder = quotient % 10;
             quotient = quotient / 10;
-            putByteWithoutBoundsCheck(i + index, (byte)(ZERO + remainder));
+            UNSAFE.putByte(byteArray, addressOffset + i + index, (byte)(ZERO + remainder));
             i--;
         }
 
@@ -1691,7 +1676,7 @@ public class UnsafeBuffer implements AtomicBuffer
         {
             final long remainder = quotient % 10L;
             quotient = quotient / 10L;
-            putByteWithoutBoundsCheck(i + start, (byte)(ZERO + remainder));
+            UNSAFE.putByte(byteArray, addressOffset + i + start, (byte)(ZERO + remainder));
             i--;
         }
 
@@ -1699,6 +1684,25 @@ public class UnsafeBuffer implements AtomicBuffer
     }
 
     ///////////////////////////////////////////////////////////////////////////
+
+    private static void boundsCheckWrap(final int offset, final int length, final int capacity)
+    {
+        if (offset < 0)
+        {
+            throw new IllegalArgumentException("invalid offset: " + offset);
+        }
+
+        if (length < 0)
+        {
+            throw new IllegalArgumentException("invalid length: " + length);
+        }
+
+        if ((offset > capacity - length) || (length > capacity - offset))
+        {
+            throw new IllegalArgumentException(
+                "offset=" + offset + " length=" + length + " not valid for capacity=" + capacity);
+        }
+    }
 
     private void boundsCheck(final int index)
     {
@@ -1722,7 +1726,7 @@ public class UnsafeBuffer implements AtomicBuffer
         boundsCheck0(index, length);
     }
 
-    private void lengthCheck(final int length)
+    private static void lengthCheck(final int length)
     {
         if (length < 0)
         {
@@ -1822,7 +1826,7 @@ public class UnsafeBuffer implements AtomicBuffer
         return "UnsafeBuffer{" +
             "addressOffset=" + addressOffset +
             ", capacity=" + capacity +
-            ", byteArray=" + (SHOULD_PRINT_ARRAY_CONTENT ? Arrays.toString(byteArray) : byteArray) +
+            ", byteArray=" + byteArray + // lgtm [java/print-array]
             ", byteBuffer=" + byteBuffer +
             '}';
     }

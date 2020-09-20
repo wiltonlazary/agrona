@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,8 +26,12 @@ import java.util.function.ToIntFunction;
 /**
  * Utility functions for collection objects.
  */
-public class CollectionUtil
+public final class CollectionUtil
 {
+    private CollectionUtil()
+    {
+    }
+
     /**
      * A getOrDefault that doesn't create garbage if its suppler is non-capturing.
      *

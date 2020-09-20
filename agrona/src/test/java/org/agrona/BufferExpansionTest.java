@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,24 +15,28 @@
  */
 package org.agrona;
 
-import org.junit.experimental.theories.DataPoint;
-import org.junit.experimental.theories.Theories;
-import org.junit.experimental.theories.Theory;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import java.util.stream.Stream;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@RunWith(Theories.class)
 public class BufferExpansionTest
 {
-    @DataPoint
-    public static final MutableDirectBuffer EXPANDABLE_ARRAY_BUFFER = new ExpandableArrayBuffer();
+    private static Stream<MutableDirectBuffer> buffers()
+    {
+        return Stream.of(
+            new ExpandableArrayBuffer(),
+            new ExpandableDirectByteBuffer()
+        );
+    }
 
-    @DataPoint
-    public static final MutableDirectBuffer EXPANDABLE_DIRECT_BYTE_BUFFER = new ExpandableDirectByteBuffer();
-
-    @Theory
+    @ParameterizedTest
+    @MethodSource("buffers")
     public void shouldExpand(final MutableDirectBuffer buffer)
     {
         final int capacity = buffer.capacity();
@@ -42,6 +46,40 @@ public class BufferExpansionTest
         buffer.putInt(index, value);
 
         assertThat(buffer.capacity(), greaterThan(capacity));
-        assertThat(buffer.getInt(index), is(value));
+        assertEquals(buffer.getInt(index), value);
+    }
+
+    @Test
+    public void shouldExpandArrayBufferFromZeroCapacity()
+    {
+        final MutableDirectBuffer buffer = new ExpandableArrayBuffer(0);
+        buffer.putByte(0, (byte)4);
+
+        assertThat(buffer.capacity(), greaterThan(0));
+    }
+
+    @Test
+    public void shouldExpandArrayBufferFromOneCapacity()
+    {
+        final MutableDirectBuffer buffer = new ExpandableArrayBuffer(1);
+        buffer.putByte(0, (byte)4);
+        buffer.putByte(1, (byte)2);
+    }
+
+    @Test
+    public void shouldExpandDirectBufferFromZeroCapacity()
+    {
+        final MutableDirectBuffer buffer = new ExpandableDirectByteBuffer(0);
+        buffer.putByte(0, (byte)4);
+
+        assertThat(buffer.capacity(), greaterThan(0));
+    }
+
+    @Test
+    public void shouldExpandDirectBufferFromOneCapacity()
+    {
+        final MutableDirectBuffer buffer = new ExpandableDirectByteBuffer(1);
+        buffer.putByte(0, (byte)4);
+        buffer.putByte(1, (byte)2);
     }
 }

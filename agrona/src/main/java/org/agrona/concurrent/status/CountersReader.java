@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,13 @@ import static org.agrona.BitUtil.SIZE_OF_LONG;
  *  |                        Counter Value                          |
  *  |                                                               |
  *  +---------------------------------------------------------------+
- *  |                     120 bytes of padding                     ...
+ *  |                       Registration Id                         |
+ *  |                                                               |
+ *  +---------------------------------------------------------------+
+ *  |                          Owner Id                             |
+ *  |                                                               |
+ *  +---------------------------------------------------------------+
+ *  |                     104 bytes of padding                     ...
  * ...                                                              |
  *  +---------------------------------------------------------------+
  *  |                   Repeats to end of buffer                   ...
@@ -59,7 +65,7 @@ import static org.agrona.BitUtil.SIZE_OF_LONG;
  *  +---------------------------------------------------------------+
  *  |                          Type Id                              |
  *  +---------------------------------------------------------------+
- *  |                   Free-for-reuse Deadline                     |
+ *  |                  Free-for-reuse Deadline (ms)                 |
  *  |                                                               |
  *  +---------------------------------------------------------------+
  *  |                      112 bytes for key                       ...
@@ -112,6 +118,21 @@ public class CountersReader
     }
 
     /**
+     * Default type id of a counter when none is supplied.
+     */
+    public static final int DEFAULT_TYPE_ID = 0;
+
+    /**
+     * Default registration id of a counter when none is set.
+     */
+    public static final long DEFAULT_REGISTRATION_ID = 0;
+
+    /**
+     * Default owner id of a counter when none is set.
+     */
+    public static final long DEFAULT_OWNER_ID = 0;
+
+    /**
      * Can be used to representing a null counter id when passed as a argument.
      */
     public static final int NULL_COUNTER_ID = -1;
@@ -135,6 +156,19 @@ public class CountersReader
      * Deadline to indicate counter is not free to be reused.
      */
     public static final long NOT_FREE_TO_REUSE = Long.MAX_VALUE;
+
+    /**
+     * Offset in the record at which the registration id field is stored. When a counter is allocated the action
+     * can be given a registration id to indicate a specific term of use. This can be useful to differentiate the
+     * reuse of a counter id for another purpose even with the same type id.
+     */
+    public static final int REGISTRATION_ID_OFFSET = SIZE_OF_LONG;
+
+    /**
+     * Offset in the record at which the owner id field is stored. The owner is an abstract concept which can be
+     * used to associate counters to an owner for lifecycle management.
+     */
+    public static final int OWNER_ID_OFFSET = REGISTRATION_ID_OFFSET + SIZE_OF_LONG;
 
     /**
      * Offset in the record at which the type id field is stored.
@@ -209,7 +243,7 @@ public class CountersReader
     public CountersReader(
         final AtomicBuffer metaDataBuffer, final AtomicBuffer valuesBuffer, final Charset labelCharset)
     {
-        this.maxCounterId = valuesBuffer.capacity() / COUNTER_LENGTH;
+        this.maxCounterId = (valuesBuffer.capacity() / COUNTER_LENGTH) - 1;
         this.valuesBuffer = valuesBuffer;
         this.metaDataBuffer = metaDataBuffer;
         this.labelCharset = labelCharset;
@@ -316,14 +350,14 @@ public class CountersReader
         final AtomicBuffer metaDataBuffer = this.metaDataBuffer;
         final AtomicBuffer valuesBuffer = this.valuesBuffer;
 
-        for (int i = 0, capacity = metaDataBuffer.capacity(); i < capacity; i += METADATA_LENGTH)
+        for (int offset = 0, capacity = metaDataBuffer.capacity(); offset < capacity; offset += METADATA_LENGTH)
         {
-            final int recordStatus = metaDataBuffer.getIntVolatile(i);
-
+            final int recordStatus = metaDataBuffer.getIntVolatile(offset);
             if (RECORD_ALLOCATED == recordStatus)
             {
-                consumer.accept(
-                    valuesBuffer.getLongVolatile(counterOffset(counterId)), counterId, labelValue(metaDataBuffer, i));
+                final String label = labelValue(metaDataBuffer, offset);
+                final long value = valuesBuffer.getLongVolatile(counterOffset(counterId));
+                consumer.accept(value, counterId, label);
             }
             else if (RECORD_UNUSED == recordStatus)
             {
@@ -345,14 +379,14 @@ public class CountersReader
 
         final AtomicBuffer metaDataBuffer = this.metaDataBuffer;
 
-        for (int i = 0, capacity = metaDataBuffer.capacity(); i < capacity; i += METADATA_LENGTH)
+        for (int offset = 0, capacity = metaDataBuffer.capacity(); offset < capacity; offset += METADATA_LENGTH)
         {
-            final int recordStatus = metaDataBuffer.getIntVolatile(i);
+            final int recordStatus = metaDataBuffer.getIntVolatile(offset);
             if (RECORD_ALLOCATED == recordStatus)
             {
-                final int typeId = metaDataBuffer.getInt(i + TYPE_ID_OFFSET);
-                final String label = labelValue(metaDataBuffer, i);
-                final DirectBuffer keyBuffer = new UnsafeBuffer(metaDataBuffer, i + KEY_OFFSET, MAX_KEY_LENGTH);
+                final int typeId = metaDataBuffer.getInt(offset + TYPE_ID_OFFSET);
+                final String label = labelValue(metaDataBuffer, offset);
+                final DirectBuffer keyBuffer = new UnsafeBuffer(metaDataBuffer, offset + KEY_OFFSET, MAX_KEY_LENGTH);
 
                 metaData.accept(counterId, typeId, keyBuffer, label);
             }
@@ -366,6 +400,72 @@ public class CountersReader
     }
 
     /**
+     * Iterate over allocated counters and find the first matching a given registration id.
+     *
+     * @param registrationId to find.
+     * @return the counter if found otherwise {@link #NULL_COUNTER_ID}.
+     */
+    public int findByRegistrationId(final long registrationId)
+    {
+        int counterId = -1;
+        final AtomicBuffer metaDataBuffer = this.metaDataBuffer;
+        final int capacity = metaDataBuffer.capacity();
+
+        for (int offset = 0, i = 0; offset < capacity; offset += METADATA_LENGTH, i++)
+        {
+            final int recordStatus = metaDataBuffer.getIntVolatile(offset);
+            if (RECORD_ALLOCATED == recordStatus)
+            {
+                if (registrationId == valuesBuffer.getLongVolatile(counterOffset(i) + REGISTRATION_ID_OFFSET))
+                {
+                    counterId = i;
+                    break;
+                }
+            }
+            else if (RECORD_UNUSED == recordStatus)
+            {
+                break;
+            }
+        }
+
+        return counterId;
+    }
+
+    /**
+     * Iterate over allocated counters and find the first matching a given type id and registration id.
+     *
+     * @param typeId         to find.
+     * @param registrationId to find.
+     * @return the counter if found otherwise {@link #NULL_COUNTER_ID}.
+     */
+    public int findByTypeIdAndRegistrationId(final int typeId, final long registrationId)
+    {
+        int counterId = -1;
+        final AtomicBuffer metaDataBuffer = this.metaDataBuffer;
+        final int capacity = metaDataBuffer.capacity();
+
+        for (int offset = 0, i = 0; offset < capacity; offset += METADATA_LENGTH, i++)
+        {
+            final int recordStatus = metaDataBuffer.getIntVolatile(offset);
+            if (RECORD_ALLOCATED == recordStatus)
+            {
+                if (typeId == metaDataBuffer.getInt(offset + TYPE_ID_OFFSET) &&
+                    registrationId == valuesBuffer.getLongVolatile(counterOffset(i) + REGISTRATION_ID_OFFSET))
+                {
+                    counterId = i;
+                    break;
+                }
+            }
+            else if (RECORD_UNUSED == recordStatus)
+            {
+                break;
+            }
+        }
+
+        return counterId;
+    }
+
+    /**
      * Get the value for a given counter id as a volatile read.
      *
      * @param counterId to be read.
@@ -374,8 +474,35 @@ public class CountersReader
     public long getCounterValue(final int counterId)
     {
         validateCounterId(counterId);
-
         return valuesBuffer.getLongVolatile(counterOffset(counterId));
+    }
+
+    /**
+     * Get the registration id for a given counter id as a volatile read. The registration identity may be assigned
+     * when the counter is allocated to help avoid ABA issues if the counter id is reused.
+     *
+     * @param counterId to be read.
+     * @return the current registration id of the counter.
+     * @see #DEFAULT_REGISTRATION_ID
+     */
+    public long getCounterRegistrationId(final int counterId)
+    {
+        validateCounterId(counterId);
+        return valuesBuffer.getLongVolatile(counterOffset(counterId) + REGISTRATION_ID_OFFSET);
+    }
+
+    /**
+     * Get the owner id for a given counter id as a normal read. The owner identity may be assigned when the
+     * counter is allocated to help associate it with the abstract concept of an owner for lifecycle management.
+     *
+     * @param counterId to be read.
+     * @return the current owner id of the counter.
+     * @see #DEFAULT_OWNER_ID
+     */
+    public long getCounterOwnerId(final int counterId)
+    {
+        validateCounterId(counterId);
+        return valuesBuffer.getLong(counterOffset(counterId) + OWNER_ID_OFFSET);
     }
 
     /**
@@ -390,21 +517,32 @@ public class CountersReader
     public int getCounterState(final int counterId)
     {
         validateCounterId(counterId);
-
         return metaDataBuffer.getIntVolatile(metaDataOffset(counterId));
     }
 
     /**
-     * Get the deadline (in milliseconds) for when a given counter id may be reused.
+     * Get the type id for a given counter id.
      *
      * @param counterId to be read.
-     * @return deadline (in milliseconds) for when a given counter id may be reused or {@link #NOT_FREE_TO_REUSE} if
-     * currently in use.
+     * @return the type id for a given counter id.
+     * @see #DEFAULT_TYPE_ID
+     */
+    public int getCounterTypeId(final int counterId)
+    {
+        validateCounterId(counterId);
+        return metaDataBuffer.getInt(metaDataOffset(counterId) + TYPE_ID_OFFSET);
+    }
+
+    /**
+     * Get the deadline (ms) for when a given counter id may be reused as a volatile read.
+     *
+     * @param counterId to be read.
+     * @return deadline (ms) for when a given counter id may be reused or {@link #NOT_FREE_TO_REUSE} if currently
+     * in use.
      */
     public long getFreeForReuseDeadline(final int counterId)
     {
         validateCounterId(counterId);
-
         return metaDataBuffer.getLongVolatile(metaDataOffset(counterId) + FREE_FOR_REUSE_DEADLINE_OFFSET);
     }
 
@@ -417,11 +555,10 @@ public class CountersReader
     public String getCounterLabel(final int counterId)
     {
         validateCounterId(counterId);
-
         return labelValue(metaDataBuffer, metaDataOffset(counterId));
     }
 
-    private void validateCounterId(final int counterId)
+    protected void validateCounterId(final int counterId)
     {
         if (counterId < 0 || counterId > maxCounterId)
         {
@@ -432,7 +569,7 @@ public class CountersReader
 
     private String labelValue(final AtomicBuffer metaDataBuffer, final int recordOffset)
     {
-        final int labelLength = metaDataBuffer.getInt(recordOffset + LABEL_OFFSET);
+        final int labelLength = metaDataBuffer.getIntVolatile(recordOffset + LABEL_OFFSET);
         final byte[] stringInBytes = new byte[labelLength];
         metaDataBuffer.getBytes(recordOffset + LABEL_OFFSET + SIZE_OF_INT, stringInBytes);
 

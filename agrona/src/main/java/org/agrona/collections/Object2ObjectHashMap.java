@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,12 @@ package org.agrona.collections;
 import java.io.Serializable;
 import java.util.*;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 import static java.util.Objects.requireNonNull;
 import static org.agrona.BitUtil.findNextPositivePowerOfTwo;
 import static org.agrona.collections.CollectionUtil.validateLoadFactor;
+import org.agrona.generation.DoNotSub;
 
 /**
  * A open addressing with linear probing hash map, same algorithm as {@link Int2IntHashMap}.
@@ -93,7 +95,7 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
      */
     public int capacity()
     {
-        return entries.length >> 2;
+        return entries.length >> 1;
     }
 
     /**
@@ -122,7 +124,6 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
     {
         Objects.requireNonNull(key);
 
-        final Object[] entries = this.entries;
         final int mask = entries.length - 1;
         int index = Hashing.evenHash(key.hashCode(), mask);
 
@@ -154,7 +155,6 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
         final Object val = mapNullValue(value);
         requireNonNull(val, "value cannot be null");
 
-        final Object[] entries = this.entries;
         final int mask = entries.length - 1;
         int index = Hashing.evenHash(key.hashCode(), mask);
         Object oldValue = null;
@@ -226,7 +226,7 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
      * Does the map contain the value.
      *
      * @param value to be tested against contained values.
-     * @return true if contained otherwise value.
+     * @return true if contained otherwise false.
      */
     public boolean containsValue(final Object value)
     {
@@ -234,7 +234,6 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
         boolean found = false;
         if (val != null)
         {
-            final Object[] entries = this.entries;
             final int length = entries.length;
 
             for (int valueIndex = 1; valueIndex < length; valueIndex += 2)
@@ -278,15 +277,14 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
     @SuppressWarnings("unchecked")
     public void forEach(final BiConsumer<? super K, ? super V> consumer)
     {
-        final Object[] entries = this.entries;
-        final int length = entries.length;
+        int remaining = size;
 
-        for (int keyIndex = 0; keyIndex < length; keyIndex += 2)
+        for (int i = 1, length = entries.length; remaining > 0 && i < length; i += 2)
         {
-            if (entries[keyIndex + 1] != null) // lgtm [java/index-out-of-bounds]
+            if (null != entries[i])
             {
-                consumer.accept(
-                    (K)entries[keyIndex], unmapNullValue(entries[keyIndex + 1])); // lgtm [java/index-out-of-bounds]
+                consumer.accept((K)entries[i - 1], unmapNullValue(entries[i]));
+                --remaining;
             }
         }
     }
@@ -445,6 +443,7 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
         {
             return true;
         }
+
         if (!(o instanceof Map))
         {
             return false;
@@ -505,13 +504,13 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
             final int capacity = entries.length;
 
             int keyIndex = capacity;
-            if (entries[capacity - 1] != null)
+            if (null != entries[capacity - 1])
             {
-                keyIndex = 0;
-                for (; keyIndex < capacity; keyIndex += 2)
+                for (int i = 1; i < capacity; i += 2)
                 {
-                    if (entries[keyIndex + 1] == null) // lgtm [java/index-out-of-bounds]
+                    if (entries[i] == null)
                     {
+                        keyIndex = i - 1;
                         break;
                     }
                 }
@@ -588,7 +587,6 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
         public K next()
         {
             findNext();
-
             return (K)entries[keyPosition()];
         }
     }
@@ -598,7 +596,6 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
         public V next()
         {
             findNext();
-
             return unmapNullValue(entries[keyPosition() + 1]);
         }
     }
@@ -653,50 +650,7 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
 
         private Entry<K, V> allocateDuplicateEntry()
         {
-            final K k = getKey();
-            final V v = getValue();
-
-            return new Entry<K, V>()
-            {
-                public K getKey()
-                {
-                    return k;
-                }
-
-                public V getValue()
-                {
-                    return v;
-                }
-
-                public V setValue(final V value)
-                {
-                    return Object2ObjectHashMap.this.put(k, value);
-                }
-
-                public int hashCode()
-                {
-                    final V v = getValue();
-                    return getKey().hashCode() ^ (v != null ? v.hashCode() : 0);
-                }
-
-                public boolean equals(final Object o)
-                {
-                    if (!(o instanceof Entry))
-                    {
-                        return false;
-                    }
-
-                    final Entry e = (Entry)o;
-
-                    return (e.getKey() != null && e.getKey().equals(k)) &&
-                        ((e.getValue() == null && v == null) || e.getValue().equals(v));
-                }
-
-                public String toString()
-                {
-                    return k + "=" + v;
-                }
-            };
+            return new MapEntry(getKey(), getValue());
         }
 
         /**
@@ -721,9 +675,60 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
                 return false;
             }
 
-            final Entry that = (Entry)o;
+            final Entry<?, ?> that = (Entry<?, ?>)o;
 
             return Objects.equals(getKey(), that.getKey()) && Objects.equals(getValue(), that.getValue());
+        }
+
+        public final class MapEntry implements Entry<K, V>
+        {
+            private final K k;
+            private final V v;
+
+            public MapEntry(final K k, final V v)
+            {
+                this.k = k;
+                this.v = v;
+            }
+
+            public K getKey()
+            {
+                return k;
+            }
+
+            public V getValue()
+            {
+                return v;
+            }
+
+            public V setValue(final V value)
+            {
+                return Object2ObjectHashMap.this.put(k, value);
+            }
+
+            public int hashCode()
+            {
+                final V v = getValue();
+                return getKey().hashCode() ^ (v != null ? v.hashCode() : 0);
+            }
+
+            public boolean equals(final Object o)
+            {
+                if (!(o instanceof Map.Entry))
+                {
+                    return false;
+                }
+
+                final Entry<?, ?> e = (Entry<?, ?>)o;
+
+                return (e.getKey() != null && e.getKey().equals(k)) &&
+                    ((e.getValue() == null && v == null) || e.getValue().equals(v));
+            }
+
+            public String toString()
+            {
+                return k + "=" + v;
+            }
         }
     }
 
@@ -777,6 +782,21 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
         {
             return containsKey(o);
         }
+
+        @SuppressWarnings("unchecked")
+        public void forEach(final Consumer<? super K> action)
+        {
+            int remaining = Object2ObjectHashMap.this.size;
+
+            for (int i = 1, length = entries.length; remaining > 0 && i < length; i += 2)
+            {
+                if (null != entries[i])
+                {
+                    action.accept((K)entries[i - 1]);
+                    --remaining;
+                }
+            }
+        }
     }
 
     public final class ValueCollection extends AbstractCollection<V>
@@ -812,6 +832,20 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
         public boolean contains(final Object o)
         {
             return containsValue(o);
+        }
+
+        public void forEach(final Consumer<? super V> action)
+        {
+            int remaining = Object2ObjectHashMap.this.size;
+
+            for (int i = 1, length = entries.length; remaining > 0 && i < length; i += 2)
+            {
+                if (null != entries[i])
+                {
+                    action.accept(unmapNullValue(entries[i]));
+                    --remaining;
+                }
+            }
         }
     }
 
@@ -863,9 +897,49 @@ public class Object2ObjectHashMap<K, V> implements Map<K, V>, Serializable
          */
         public boolean contains(final Object o)
         {
-            final Entry entry = (Entry)o;
+            if (!(o instanceof Entry))
+            {
+                return false;
+            }
+
+            final Entry<?, ?> entry = (Entry<?, ?>)o;
             final V value = getMapped(entry.getKey());
             return value != null && value.equals(mapNullValue(entry.getValue()));
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public Object[] toArray()
+        {
+            return toArray(new Object[size()]);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @SuppressWarnings("unchecked")
+        public <T> T[] toArray(final T[] a)
+        {
+            final T[] array = a.length >= size ?
+                a : (T[])java.lang.reflect.Array.newInstance(a.getClass().getComponentType(), size);
+            final EntryIterator it = iterator();
+
+            for (@DoNotSub int i = 0; i < array.length; i++)
+            {
+                if (it.hasNext())
+                {
+                    it.next();
+                    array[i] = (T)it.allocateDuplicateEntry();
+                }
+                else
+                {
+                    array[i] = null;
+                    break;
+                }
+            }
+
+            return array;
         }
     }
 }

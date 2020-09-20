@@ -2,10 +2,11 @@ Agrona
 ======
 
 [![Javadocs](https://www.javadoc.io/badge/org.agrona/agrona.svg)](https://www.javadoc.io/doc/org.agrona/agrona)
-[![Build Status](https://travis-ci.org/real-logic/agrona.svg?branch=master)](https://travis-ci.org/real-logic/agrona)
 [![GitHub](https://img.shields.io/github/license/real-logic/Agrona.svg)](https://github.com/real-logic/agrona/blob/master/LICENSE)
-[![Code Quality: Java](https://img.shields.io/lgtm/grade/java/g/real-logic/Agrona.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/real-logic/agrona/context:java)
+
+[![Actions Status](https://github.com/real-logic/agrona/workflows/Continuous%20Integration/badge.svg)](https://github.com/real-logic/agrona/actions)
 [![Total Alerts](https://img.shields.io/lgtm/alerts/g/real-logic/Agrona.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/real-logic/agrona/alerts)
+[![Code Quality: Java](https://img.shields.io/lgtm/grade/java/g/real-logic/Agrona.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/real-logic/agrona/context:java)
 
 Agrona provides a library of data structures and utility methods that are a common need when building high-performance 
 applications in Java. Many of these utilities are used in the [Aeron](https://github.com/real-logic/aeron) 
@@ -44,7 +45,7 @@ The project is built with [Gradle](http://gradle.org/) using this [build.gradle]
 
 You require the following to build Agrona:
 
-* At least Java 8. Agrona is tested with Java 8 and 11.
+* Latest Java 8. Agrona is tested with Java 8 and 11.
 
 Full clean, build, and install into local maven repository
 
@@ -52,7 +53,7 @@ Full clean, build, and install into local maven repository
 
 License (See LICENSE file for full license)
 -------------------------------------------
-Copyright 2014-2019 Real Logic Limited
+Copyright 
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

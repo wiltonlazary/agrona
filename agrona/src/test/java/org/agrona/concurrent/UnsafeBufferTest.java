@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,25 +16,19 @@
 package org.agrona.concurrent;
 
 import org.agrona.MutableDirectBuffer;
-import org.junit.Test;
-import org.junit.experimental.theories.DataPoints;
-import org.junit.experimental.theories.Theories;
-import org.junit.experimental.theories.Theory;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import static java.nio.charset.StandardCharsets.US_ASCII;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.greaterThan;
-import static org.hamcrest.Matchers.lessThan;
-import static org.junit.Assert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@RunWith(Theories.class)
 public class UnsafeBufferTest
 {
     private static final byte VALUE = 42;
@@ -227,6 +221,54 @@ public class UnsafeBufferTest
         assertContainsString(buffer, String.valueOf(Integer.MIN_VALUE), length);
     }
 
+    @ParameterizedTest
+    @MethodSource("valuesAndLengths")
+    public void shouldPutNaturalFromEnd(final int[] valueAndLength)
+    {
+        final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[8 * 1024]);
+        final int value = valueAndLength[0];
+        final int length = valueAndLength[1];
+
+        final int start = buffer.putNaturalIntAsciiFromEnd(value, length);
+        final String message = "for " + Arrays.toString(valueAndLength);
+        assertEquals(0, start, message);
+
+        assertEquals(
+            String.valueOf(value),
+            buffer.getStringWithoutLengthAscii(0, length),
+            message);
+    }
+
+    @Test
+    public void shouldWrapValidRange()
+    {
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[8]);
+        final UnsafeBuffer slice = new UnsafeBuffer();
+
+        slice.wrap(buffer);
+        slice.wrap(buffer, 0, 8);
+        slice.wrap(buffer, 1, 7);
+        slice.wrap(buffer, 2, 6);
+        slice.wrap(buffer, 3, 5);
+        slice.wrap(buffer, 4, 4);
+        slice.wrap(buffer, 5, 3);
+        slice.wrap(buffer, 6, 2);
+        slice.wrap(buffer, 7, 1);
+        slice.wrap(buffer, 8, 0);
+    }
+
+    @Test
+    public void shouldNotWrapInValidRange()
+    {
+        final UnsafeBuffer buffer = new UnsafeBuffer(new byte[8]);
+        final UnsafeBuffer slice = new UnsafeBuffer();
+
+        assertThrows(IllegalArgumentException.class, () -> slice.wrap(buffer, -1, 0));
+        assertThrows(IllegalArgumentException.class, () -> slice.wrap(buffer, 0, -1));
+        assertThrows(IllegalArgumentException.class, () -> slice.wrap(buffer, 8, 1));
+        assertThrows(IllegalArgumentException.class, () -> slice.wrap(buffer, 7, 3));
+    }
+
     private void assertContainsString(final UnsafeBuffer buffer, final String value, final int length)
     {
         assertEquals(value, buffer.getStringWithoutLengthAscii(INDEX, length));
@@ -237,57 +279,21 @@ public class UnsafeBufferTest
         buffer.putBytes(INDEX, value.getBytes(US_ASCII));
     }
 
-    @Test
-    public void shouldSkipArrayContentPrintout() throws Exception
-    {
-        final Field settingField = UnsafeBuffer.class.getDeclaredField("SHOULD_PRINT_ARRAY_CONTENT");
-        settingField.setAccessible(true);
-        final Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(settingField, settingField.getModifiers() & ~Modifier.FINAL);
-
-        final byte[] backingArray = new byte[10];
-        final UnsafeBuffer unsafeBuffer = new UnsafeBuffer(backingArray);
-
-        settingField.set(null, true);
-        assertTrue(unsafeBuffer.toString().contains(Arrays.toString(backingArray)));
-
-        settingField.set(null, false);
-        assertFalse(unsafeBuffer.toString().contains(Arrays.toString(backingArray)));
-    }
-
-    @DataPoints
-    public static int[][] valuesAndLengths()
+    private static int[][] valuesAndLengths()
     {
         return new int[][]
             {
-                {1, 1},
-                {10, 2},
-                {100, 3},
-                {1000, 4},
-                {12, 2},
-                {123, 3},
-                {2345, 4},
-                {9, 1},
-                {99, 2},
-                {999, 3},
-                {9999, 4},
+                { 1, 1 },
+                { 10, 2 },
+                { 100, 3 },
+                { 1000, 4 },
+                { 12, 2 },
+                { 123, 3 },
+                { 2345, 4 },
+                { 9, 1 },
+                { 99, 2 },
+                { 999, 3 },
+                { 9999, 4 },
             };
-    }
-
-    @Theory
-    public void shouldPutNaturalFromEnd(final int[] valueAndLength)
-    {
-        final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[8 * 1024]);
-        final int value = valueAndLength[0];
-        final int length = valueAndLength[1];
-
-        final int start = buffer.putNaturalIntAsciiFromEnd(value, length);
-        assertEquals("for " + Arrays.toString(valueAndLength), 0, start);
-
-        assertEquals(
-            "for " + Arrays.toString(valueAndLength),
-            String.valueOf(value),
-            buffer.getStringWithoutLengthAscii(0, length));
     }
 }

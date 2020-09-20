@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -206,8 +206,8 @@ public class AgentRunner implements Runnable, AutoCloseable
      * is written to stderr. Please note  that a retry close timeout of zero
      * waits indefinitely, in which case the fail action is only called on interrupt.
      *
-     * @param retryCloseTimeoutMs how long to wait before retrying
-     * @param closeFailAction     function to invoke before retrying after close timeout
+     * @param retryCloseTimeoutMs how long to wait before retrying.
+     * @param closeFailAction     function to invoke before retrying after close timeout.
      */
     public final void close(final int retryCloseTimeoutMs, final Consumer<Thread> closeFailAction)
     {
@@ -235,6 +235,11 @@ public class AgentRunner implements Runnable, AutoCloseable
             {
                 try
                 {
+                    if (isClosed)
+                    {
+                        return;
+                    }
+
                     thread.join(retryCloseTimeoutMs);
 
                     if (!thread.isAlive() || isClosed)
@@ -242,15 +247,7 @@ public class AgentRunner implements Runnable, AutoCloseable
                         return;
                     }
 
-                    if (null == closeFailAction)
-                    {
-                        System.err.println(
-                            "timeout waiting for agent '" + agent.roleName() + "' to close, " + "retrying...");
-                    }
-                    else
-                    {
-                        closeFailAction.accept(thread);
-                    }
+                    failAction(closeFailAction, thread, "timeout, retrying...");
 
                     if (!thread.isInterrupted())
                     {
@@ -259,20 +256,31 @@ public class AgentRunner implements Runnable, AutoCloseable
                 }
                 catch (final InterruptedException ignore)
                 {
-                    if (null == closeFailAction)
+                    Thread.currentThread().interrupt();
+
+                    failAction(closeFailAction, thread, "thread interrupt");
+
+                    if (!isClosed && !thread.isInterrupted())
                     {
-                        System.err.println(
-                            "close failed for agent '" + agent.roleName() + "' due to InterruptedException");
-                    }
-                    else
-                    {
-                        closeFailAction.accept(thread);
+                        thread.interrupt();
+                        Thread.yield();
                     }
 
-                    Thread.currentThread().interrupt();
                     return;
                 }
             }
+        }
+    }
+
+    private void failAction(final Consumer<Thread> closeFailAction, final Thread thread, final String message)
+    {
+        if (null == closeFailAction)
+        {
+            System.err.println(agent.roleName() + " failed to close due to " + message);
+        }
+        else
+        {
+            closeFailAction.accept(thread);
         }
     }
 
@@ -280,7 +288,15 @@ public class AgentRunner implements Runnable, AutoCloseable
     {
         try
         {
-            idleStrategy.idle(agent.doWork());
+            final int workCount = agent.doWork();
+            idleStrategy.idle(workCount);
+            if (0 >= workCount)
+            {
+                if (Thread.currentThread().isInterrupted())
+                {
+                    isRunning = false;
+                }
+            }
         }
         catch (final InterruptedException | ClosedByInterruptException ignore)
         {

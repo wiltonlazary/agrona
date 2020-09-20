@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,17 +15,18 @@
  */
 package org.agrona.concurrent.broadcast;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InOrder;
 import org.agrona.concurrent.UnsafeBuffer;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
-import static org.hamcrest.Matchers.greaterThan;
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
 import static org.agrona.BitUtil.align;
 import static org.agrona.concurrent.broadcast.RecordDescriptor.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 public class BroadcastReceiverTest
 {
@@ -40,7 +41,7 @@ public class BroadcastReceiverTest
     private final UnsafeBuffer buffer = mock(UnsafeBuffer.class);
     private BroadcastReceiver broadcastReceiver;
 
-    @Before
+    @BeforeEach
     public void setUp()
     {
         when(buffer.capacity()).thenReturn(TOTAL_BUFFER_LENGTH);
@@ -54,7 +55,7 @@ public class BroadcastReceiverTest
         assertThat(broadcastReceiver.capacity(), is(CAPACITY));
     }
 
-    @Test(expected = IllegalStateException.class)
+    @Test
     public void shouldThrowExceptionForCapacityThatIsNotPowerOfTwo()
     {
         final int capacity = 777;
@@ -62,7 +63,7 @@ public class BroadcastReceiverTest
 
         when(buffer.capacity()).thenReturn(totalBufferLength);
 
-        new BroadcastReceiver(buffer);
+        assertThrows(IllegalStateException.class, () -> new BroadcastReceiver(buffer));
     }
 
     @Test
@@ -162,7 +163,7 @@ public class BroadcastReceiverTest
 
         when(buffer.getLongVolatile(TAIL_INTENT_COUNTER_OFFSET)).thenReturn(tail);
         when(buffer.getLongVolatile(TAIL_COUNTER_INDEX)).thenReturn(tail);
-        when(buffer.getLong(LATEST_COUNTER_INDEX)).thenReturn(latestRecord);
+        when(buffer.getLongVolatile(LATEST_COUNTER_INDEX)).thenReturn(latestRecord);
 
         when(buffer.getInt(lengthOffset(recordOffset))).thenReturn(recordLength);
         when(buffer.getInt(typeOffset(recordOffset))).thenReturn(MSG_TYPE_ID);
@@ -194,7 +195,7 @@ public class BroadcastReceiverTest
         when(buffer.getLongVolatile(TAIL_COUNTER_INDEX))
             .thenReturn(catchupTail)
             .thenReturn(postPaddingTail);
-        when(buffer.getLong(LATEST_COUNTER_INDEX)).thenReturn(latestRecord);
+        when(buffer.getLongVolatile(LATEST_COUNTER_INDEX)).thenReturn(latestRecord);
         when(buffer.getInt(lengthOffset(catchupOffset))).thenReturn(recordLength);
         when(buffer.getInt(typeOffset(catchupOffset))).thenReturn(MSG_TYPE_ID);
 
@@ -242,7 +243,6 @@ public class BroadcastReceiverTest
 
         assertFalse(broadcastReceiver.validate()); // Need to receiveNext() to catch up with transmission again.
 
-        final InOrder inOrder = inOrder(buffer);
-        inOrder.verify(buffer).getLongVolatile(TAIL_COUNTER_INDEX);
+        verify(buffer).getLongVolatile(TAIL_COUNTER_INDEX);
     }
 }

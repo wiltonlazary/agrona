@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +19,7 @@ import org.agrona.DirectBuffer;
 import org.agrona.LangUtil;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.IntArrayList;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.EpochClock;
-import org.agrona.concurrent.UnsafeBuffer;
+import org.agrona.concurrent.*;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -42,7 +40,13 @@ import static org.agrona.BitUtil.SIZE_OF_INT;
  *  |                        Counter Value                          |
  *  |                                                               |
  *  +---------------------------------------------------------------+
- *  |                     120 bytes of padding                     ...
+ *  |                       Registration Id                         |
+ *  |                                                               |
+ *  +---------------------------------------------------------------+
+ *  |                          Owner Id                             |
+ *  |                                                               |
+ *  +---------------------------------------------------------------+
+ *  |                     104 bytes of padding                     ...
  * ...                                                              |
  *  +---------------------------------------------------------------+
  *  |                   Repeats to end of buffer                   ...
@@ -60,7 +64,7 @@ import static org.agrona.BitUtil.SIZE_OF_INT;
  *  +---------------------------------------------------------------+
  *  |                          Type Id                              |
  *  +---------------------------------------------------------------+
- *  |                   Free-for-reuse Deadline                     |
+ *  |                 Free-for-reuse Deadline (ms)                  |
  *  |                                                               |
  *  +---------------------------------------------------------------+
  *  |                      112 bytes for key                       ...
@@ -79,18 +83,13 @@ import static org.agrona.BitUtil.SIZE_OF_INT;
  */
 public class CountersManager extends CountersReader
 {
-    /**
-     * Default type id of a counter when none is supplied.
-     */
-    public static final int DEFAULT_TYPE_ID = 0;
-
     private final long freeToReuseTimeoutMs;
     private int idHighWaterMark = -1;
     private final IntArrayList freeList = new IntArrayList();
     private final EpochClock epochClock;
 
     /**
-     * Create a new counter buffer manager over two buffers.
+     * Create a new counter manager over two buffers.
      *
      * @param metaDataBuffer       containing the types, keys, and labels for the counters.
      * @param valuesBuffer         containing the values of the counters themselves.
@@ -111,34 +110,14 @@ public class CountersManager extends CountersReader
         this.epochClock = epochClock;
         this.freeToReuseTimeoutMs = freeToReuseTimeoutMs;
 
-        if (metaDataBuffer.capacity() < (valuesBuffer.capacity() * 2))
+        if (metaDataBuffer.capacity() < (valuesBuffer.capacity() * (METADATA_LENGTH / COUNTER_LENGTH)))
         {
-            throw new IllegalArgumentException("metadata buffer not sufficiently large");
+            throw new IllegalArgumentException("metadata buffer is too small");
         }
     }
 
     /**
-     * Create a new counter buffer manager over two buffers.
-     *
-     * @param metaDataBuffer containing the types, keys, and labels for the counters.
-     * @param valuesBuffer   containing the values of the counters themselves.
-     */
-    public CountersManager(final AtomicBuffer metaDataBuffer, final AtomicBuffer valuesBuffer)
-    {
-        super(metaDataBuffer, valuesBuffer);
-
-        valuesBuffer.verifyAlignment();
-        this.epochClock = () -> 0;
-        this.freeToReuseTimeoutMs = 0;
-
-        if (metaDataBuffer.capacity() < (valuesBuffer.capacity() * 2))
-        {
-            throw new IllegalArgumentException("metadata buffer not sufficiently large");
-        }
-    }
-
-    /**
-     * Create a new counter buffer manager over two buffers.
+     * Create a new counter manager over two buffers.
      *
      * @param metaDataBuffer containing the types, keys, and labels for the counters.
      * @param valuesBuffer   containing the values of the counters themselves.
@@ -147,7 +126,18 @@ public class CountersManager extends CountersReader
     public CountersManager(
         final AtomicBuffer metaDataBuffer, final AtomicBuffer valuesBuffer, final Charset labelCharset)
     {
-        this(metaDataBuffer, valuesBuffer, labelCharset, () -> 0, 0);
+        this(metaDataBuffer, valuesBuffer, labelCharset, new CachedEpochClock(), 0);
+    }
+
+    /**
+     * Create a new counter manager over two buffers.
+     *
+     * @param metaDataBuffer containing the types, keys, and labels for the counters.
+     * @param valuesBuffer   containing the values of the counters themselves.
+     */
+    public CountersManager(final AtomicBuffer metaDataBuffer, final AtomicBuffer valuesBuffer)
+    {
+        this(metaDataBuffer, valuesBuffer, StandardCharsets.UTF_8, new CachedEpochClock(), 0);
     }
 
     /**
@@ -171,10 +161,7 @@ public class CountersManager extends CountersReader
     public int allocate(final String label, final int typeId)
     {
         final int counterId = nextCounterId();
-        checkCountersCapacity(counterId);
-
         final int recordOffset = metaDataOffset(counterId);
-        checkMetaDataCapacity(recordOffset);
 
         try
         {
@@ -207,10 +194,7 @@ public class CountersManager extends CountersReader
     public int allocate(final String label, final int typeId, final Consumer<MutableDirectBuffer> keyFunc)
     {
         final int counterId = nextCounterId();
-        checkCountersCapacity(counterId);
-
         final int recordOffset = metaDataOffset(counterId);
-        checkMetaDataCapacity(recordOffset);
 
         try
         {
@@ -254,10 +238,7 @@ public class CountersManager extends CountersReader
         final int labelLength)
     {
         final int counterId = nextCounterId();
-        checkCountersCapacity(counterId);
-
         final int recordOffset = metaDataOffset(counterId);
-        checkMetaDataCapacity(recordOffset);
 
         try
         {
@@ -358,45 +339,129 @@ public class CountersManager extends CountersReader
      */
     public void free(final int counterId)
     {
-        final int recordOffset = metaDataOffset(counterId);
+        validateCounterId(counterId);
+        final int offset = metaDataOffset(counterId);
 
-        metaDataBuffer.putIntOrdered(recordOffset, RECORD_RECLAIMED);
-        metaDataBuffer.setMemory(recordOffset + KEY_OFFSET, MAX_KEY_LENGTH, (byte)0);
-        metaDataBuffer.putLong(
-            recordOffset + FREE_FOR_REUSE_DEADLINE_OFFSET, epochClock.time() + freeToReuseTimeoutMs);
+        metaDataBuffer.putIntOrdered(offset, RECORD_RECLAIMED);
+        metaDataBuffer.setMemory(offset + KEY_OFFSET, MAX_KEY_LENGTH, (byte)0);
+        metaDataBuffer.putLong(offset + FREE_FOR_REUSE_DEADLINE_OFFSET, epochClock.time() + freeToReuseTimeoutMs);
         freeList.addInt(counterId);
     }
 
     /**
-     * Set an {@link AtomicCounter} value based on counterId.
+     * Set an {@link AtomicCounter} value based for a counter id with volatile memory ordering.
      *
      * @param counterId to be set.
      * @param value     to set for the counter.
      */
     public void setCounterValue(final int counterId, final long value)
     {
+        validateCounterId(counterId);
         valuesBuffer.putLongOrdered(counterOffset(counterId), value);
+    }
+
+    /**
+     * Set an {@link AtomicCounter} registration id for a counter id with volatile memory ordering.
+     *
+     * @param counterId      to be set.
+     * @param registrationId to set for the counter.
+     */
+    public void setCounterRegistrationId(final int counterId, final long registrationId)
+    {
+        validateCounterId(counterId);
+        valuesBuffer.putLongOrdered(counterOffset(counterId) + REGISTRATION_ID_OFFSET, registrationId);
+    }
+
+    /**
+     * Set an {@link AtomicCounter} owner id for a counter id.
+     *
+     * @param counterId to be set.
+     * @param ownerId   to set for the counter.
+     */
+    public void setCounterOwnerId(final int counterId, final long ownerId)
+    {
+        validateCounterId(counterId);
+        valuesBuffer.putLong(counterOffset(counterId) + OWNER_ID_OFFSET, ownerId);
+    }
+
+    /**
+     * Set an {@link AtomicCounter} label by counter id.
+     *
+     * @param counterId to be set.
+     * @param label     to set for the counter.
+     */
+    public void setCounterLabel(final int counterId, final String label)
+    {
+        validateCounterId(counterId);
+        putLabel(metaDataOffset(counterId), label);
+    }
+
+    /**
+     * Set an {@link AtomicCounter} key by on counter id, using a consumer callback to update the key metadata buffer.
+     *
+     * @param counterId to be set.
+     * @param keyFunc   callback used to set the key.
+     */
+    public void setCounterKey(final int counterId, final Consumer<MutableDirectBuffer> keyFunc)
+    {
+        validateCounterId(counterId);
+        keyFunc.accept(new UnsafeBuffer(metaDataBuffer, metaDataOffset(counterId) + KEY_OFFSET, MAX_KEY_LENGTH));
+    }
+
+    /**
+     * Set an {@link AtomicCounter} key by on counter id, copying the key metadata from the supplied buffer.
+     *
+     * @param counterId to be set.
+     * @param keyBuffer containing the updated key.
+     * @param offset    offset into buffer.
+     * @param length    length of data to copy.
+     */
+    public void setCounterKey(final int counterId, final DirectBuffer keyBuffer, final int offset, final int length)
+    {
+        validateCounterId(counterId);
+        if (length > MAX_KEY_LENGTH)
+        {
+            throw new IllegalArgumentException("key is too long: " + length + ", max: " + MAX_KEY_LENGTH);
+        }
+
+        metaDataBuffer.putBytes(metaDataOffset(counterId) + KEY_OFFSET, keyBuffer, offset, length);
+    }
+
+    /**
+     * Set an {@link AtomicCounter} label based on counter id.
+     *
+     * @param counterId to be set.
+     * @param label     to set for the counter.
+     */
+    public void appendToLabel(final int counterId, final String label)
+    {
+        appendLabel(metaDataOffset(counterId), label);
     }
 
     private int nextCounterId()
     {
-        final long nowMs = epochClock.time();
-
-        for (int i = 0, size = freeList.size(); i < size; i++)
+        if (!freeList.isEmpty())
         {
-            final int counterId = freeList.getInt(i);
+            final long nowMs = epochClock.time();
 
-            final long deadlineMs = metaDataBuffer.getLongVolatile(
-                metaDataOffset(counterId) + FREE_FOR_REUSE_DEADLINE_OFFSET);
-
-            if (nowMs >= deadlineMs)
+            for (int i = 0, size = freeList.size(); i < size; i++)
             {
-                freeList.remove(i);
-                valuesBuffer.putLongOrdered(counterOffset(counterId), 0L);
+                final int counterId = freeList.getInt(i);
+                if (nowMs >= metaDataBuffer.getLong(metaDataOffset(counterId) + FREE_FOR_REUSE_DEADLINE_OFFSET))
+                {
+                    freeList.remove(i);
 
-                return counterId;
+                    final int offset = counterOffset(counterId);
+                    valuesBuffer.putLongOrdered(offset + REGISTRATION_ID_OFFSET, DEFAULT_REGISTRATION_ID);
+                    valuesBuffer.putLong(offset + OWNER_ID_OFFSET, DEFAULT_OWNER_ID);
+                    valuesBuffer.putLongOrdered(offset, 0L);
+
+                    return counterId;
+                }
             }
         }
+
+        checkCountersCapacity(idHighWaterMark + 1);
 
         return ++idHighWaterMark;
     }
@@ -407,31 +472,46 @@ public class CountersManager extends CountersReader
         {
             final int length = metaDataBuffer.putStringWithoutLengthAscii(
                 recordOffset + LABEL_OFFSET + SIZE_OF_INT, label, 0, MAX_LABEL_LENGTH);
-            metaDataBuffer.putInt(recordOffset + LABEL_OFFSET, length);
+            metaDataBuffer.putIntOrdered(recordOffset + LABEL_OFFSET, length);
         }
         else
         {
             final byte[] bytes = label.getBytes(labelCharset);
             final int length = Math.min(bytes.length, MAX_LABEL_LENGTH);
 
-            metaDataBuffer.putInt(recordOffset + LABEL_OFFSET, length);
             metaDataBuffer.putBytes(recordOffset + LABEL_OFFSET + SIZE_OF_INT, bytes, 0, length);
+            metaDataBuffer.putIntOrdered(recordOffset + LABEL_OFFSET, length);
+        }
+    }
+
+    private void appendLabel(final int recordOffset, final String suffix)
+    {
+        final int existingLength = metaDataBuffer.getInt(recordOffset + LABEL_OFFSET);
+        final int maxSuffixLength = MAX_LABEL_LENGTH - existingLength;
+
+        if (StandardCharsets.US_ASCII == labelCharset)
+        {
+            final int suffixLength = metaDataBuffer.putStringWithoutLengthAscii(
+                recordOffset + LABEL_OFFSET + SIZE_OF_INT + existingLength, suffix, 0, maxSuffixLength);
+
+            metaDataBuffer.putIntOrdered(recordOffset + LABEL_OFFSET, existingLength + suffixLength);
+        }
+        else
+        {
+            final byte[] suffixBytes = suffix.getBytes(labelCharset);
+            final int suffixLength = Math.min(suffixBytes.length, maxSuffixLength);
+
+            metaDataBuffer.putBytes(
+                recordOffset + LABEL_OFFSET + SIZE_OF_INT + existingLength, suffixBytes, 0, suffixLength);
+            metaDataBuffer.putIntOrdered(recordOffset + LABEL_OFFSET, existingLength + suffixLength);
         }
     }
 
     private void checkCountersCapacity(final int counterId)
     {
-        if ((counterOffset(counterId) + COUNTER_LENGTH) > valuesBuffer.capacity())
+        if (counterId > maxCounterId)
         {
-            throw new IllegalStateException("unable to allocate counter, values buffer is full");
-        }
-    }
-
-    private void checkMetaDataCapacity(final int recordOffset)
-    {
-        if ((recordOffset + METADATA_LENGTH) > metaDataBuffer.capacity())
-        {
-            throw new IllegalStateException("unable to allocate counter, metadata buffer is full");
+            throw new IllegalStateException("unable to allocate counter, buffer is full");
         }
     }
 }

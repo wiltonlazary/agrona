@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,15 +18,15 @@ package org.agrona.concurrent;
 import org.agrona.ErrorHandler;
 import org.agrona.LangUtil;
 import org.agrona.concurrent.status.AtomicCounter;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.nio.channels.ClosedByInterruptException;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 public class AgentInvokerTest
@@ -146,6 +146,7 @@ public class AgentInvokerTest
         when(mockAgent.doWork()).thenThrow(new ClosedByInterruptException());
 
         assertExceptionNotReported();
+        assertTrue(Thread.interrupted()); // by throwing ClosedByInterruptException
     }
 
     @Test
@@ -167,6 +168,7 @@ public class AgentInvokerTest
             });
 
         assertExceptionNotReported();
+        assertTrue(Thread.interrupted()); // by throwing ClosedByInterruptException
     }
 
     private void assertExceptionNotReported()

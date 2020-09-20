@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,6 +74,48 @@ public class MutableLong extends Number implements Comparable<MutableLong>, Seri
         return (double)value;
     }
 
+    public void increment()
+    {
+        value++;
+    }
+
+    public long incrementAndGet()
+    {
+        return ++value;
+    }
+
+    public long getAndIncrement()
+    {
+        return value++;
+    }
+
+    public void decrement()
+    {
+        value--;
+    }
+
+    public long decrementAndGet()
+    {
+        return --value;
+    }
+
+    public long getAndDecrement()
+    {
+        return value--;
+    }
+
+    public long getAndAdd(final long delta)
+    {
+        final long result = value;
+        value += delta;
+        return result;
+    }
+
+    public long addAndGet(final long delta)
+    {
+        return value += delta;
+    }
+
     public boolean equals(final Object o)
     {
         if (this == o)
@@ -108,6 +150,6 @@ public class MutableLong extends Number implements Comparable<MutableLong>, Seri
 
     public static int compare(final long lhs, final long rhs)
     {
-        return lhs < rhs ? -1 : (lhs == rhs ? 0 : 1);
+        return Long.compare(lhs, rhs);
     }
 }

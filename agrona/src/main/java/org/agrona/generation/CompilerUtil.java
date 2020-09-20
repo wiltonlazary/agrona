@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,12 +32,16 @@ import static java.util.stream.Collectors.toList;
 /**
  * Utilities for compiling Java source files at runtime.
  */
-public class CompilerUtil
+public final class CompilerUtil
 {
     /**
      * Temporary directory for files.
      */
     private static final String TEMP_DIR_NAME = SystemUtil.tmpDirName();
+
+    private CompilerUtil()
+    {
+    }
 
     /**
      * Compile a {@link Map} of source files in-memory resulting in a {@link Class} which is named.

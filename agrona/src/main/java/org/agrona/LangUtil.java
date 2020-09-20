@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,12 @@ package org.agrona;
 /**
  * Grouping of language level utilities to make programming in Java more convenient.
  */
-public class LangUtil
+public final class LangUtil
 {
+    private LangUtil()
+    {
+    }
+
     /**
      * Rethrow an {@link java.lang.Throwable} preserving the stack trace but making it unchecked.
      *

@@ -1,6 +1,6 @@
 /*
  * Copyright 2018 Gil Tene
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,15 +46,19 @@ import java.lang.ref.Reference;
  * this class, no assumptions, beyond those provided in the documentation below,
  * should be made about their actual implementation.
  */
-public class References
+public final class References
 {
+    private References()
+    {
+    }
+
     /**
      * Indicate whether a {@link Reference} has been cleared.
      *
      * @param ref The {@link Reference} to be tested.
      * @return true if {@link Reference} is cleared, otherwise false.
      */
-    public static boolean isCleared(final Reference ref)
+    public static boolean isCleared(final Reference<?> ref)
     {
         return ref.get() == null;
     }

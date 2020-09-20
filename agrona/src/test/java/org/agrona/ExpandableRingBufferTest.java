@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,20 +16,16 @@
 package org.agrona;
 
 import org.agrona.concurrent.UnsafeBuffer;
-
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 import static org.agrona.ExpandableRingBuffer.HEADER_ALIGNMENT;
 import static org.agrona.ExpandableRingBuffer.HEADER_LENGTH;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.*;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 public class ExpandableRingBufferTest
@@ -39,16 +35,18 @@ public class ExpandableRingBufferTest
     private static final int MSG_LENGTH_THREE = 700;
     private static final UnsafeBuffer TEST_MSG = new UnsafeBuffer(new byte[MSG_LENGTH_THREE]);
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldExceptionForNegativeInitialCapacity()
     {
-        new ExpandableRingBuffer(-1, 0, true);
+        assertThrows(IllegalArgumentException.class,
+            () -> new ExpandableRingBuffer(-1, 0, true));
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void shouldExceptionForOverMaxInitialCapacity()
     {
-        new ExpandableRingBuffer(ExpandableRingBuffer.MAX_CAPACITY + 1, ExpandableRingBuffer.MAX_CAPACITY, true);
+        assertThrows(IllegalArgumentException.class, () -> new ExpandableRingBuffer(
+            ExpandableRingBuffer.MAX_CAPACITY + 1, ExpandableRingBuffer.MAX_CAPACITY, true));
     }
 
     @Test
@@ -71,6 +69,25 @@ public class ExpandableRingBufferTest
         ringBuffer.append(TEST_MSG, 0, MSG_LENGTH_ONE);
         assertThat(ringBuffer.size(), greaterThan(MSG_LENGTH_ONE));
         assertFalse(ringBuffer.isEmpty());
+    }
+
+    @Test
+    public void shouldAppendMessagesWithinCapacityWithoutExpanding()
+    {
+        final int initialCapacity = 1024;
+        final int maxCapacity = 2048;
+
+        final ExpandableRingBuffer ringBuffer = new ExpandableRingBuffer(initialCapacity, maxCapacity, false);
+
+        final ExpandableRingBuffer.MessageConsumer mockConsumer = mock(ExpandableRingBuffer.MessageConsumer.class);
+        when(mockConsumer.onMessage(any(), anyInt(), anyInt(), anyInt())).thenReturn(Boolean.TRUE);
+
+        assertThat(ringBuffer.capacity(), is(initialCapacity));
+
+        final int messageLength = 32;
+        ringBuffer.append(TEST_MSG, 0, messageLength);
+
+        assertThat(ringBuffer.capacity(), is(initialCapacity));
     }
 
     @Test

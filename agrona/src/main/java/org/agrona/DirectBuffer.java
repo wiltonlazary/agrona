@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package org.agrona;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+import static org.agrona.BitUtil.SIZE_OF_INT;
+
 /**
  * Abstraction over a range of buffer types that allows fields to be read in native typed fashion.
  * <p>
@@ -27,8 +29,14 @@ import java.nio.ByteOrder;
 public interface DirectBuffer extends Comparable<DirectBuffer>
 {
     /**
+     * Length of the header on strings to denote the length of the string in bytes.
+     */
+    int STR_HEADER_LEN = SIZE_OF_INT;
+
+    /**
      * Don't print the content of the array while calling toString() on buffer instance.
      */
+    @Deprecated
     String DISABLE_ARRAY_CONTENT_PRINTOUT_PROP_NAME = "agrona.disable.array.printout";
 
     /**
@@ -177,7 +185,7 @@ public interface DirectBuffer extends Comparable<DirectBuffer>
     int getInt(int index);
 
     /**
-     * Get the ASCII encoded int sized natural value at a given index.
+     * Parse the ASCII encoded int sized natural value at a given index.
      *
      * @param index  in bytes from which to get.
      * @param length the length in bytes to parse.
@@ -186,7 +194,7 @@ public interface DirectBuffer extends Comparable<DirectBuffer>
     int parseNaturalIntAscii(int index, int length);
 
     /**
-     * Get the ASCII encoded long sized natural value at a given index.
+     * Parse the ASCII encoded long sized natural value at a given index.
      *
      * @param index  in bytes from which to get.
      * @param length the length in bytes to parse.
@@ -195,7 +203,7 @@ public interface DirectBuffer extends Comparable<DirectBuffer>
     long parseNaturalLongAscii(int index, int length);
 
     /**
-     * Get the ASCII encoded integer value at a given index.
+     * Parse the ASCII encoded integer value at a given index.
      *
      * @param index  in bytes from which to get.
      * @param length the length in bytes to parse.
@@ -204,7 +212,7 @@ public interface DirectBuffer extends Comparable<DirectBuffer>
     int parseIntAscii(int index, int length);
 
     /**
-     * Get the ASCII encoded long integer value at a given index.
+     * Parse the ASCII encoded long integer value at a given index.
      *
      * @param index  in bytes from which to get.
      * @param length the length in bytes to parse.

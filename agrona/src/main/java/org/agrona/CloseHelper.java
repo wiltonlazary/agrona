@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,14 +15,18 @@
  */
 package org.agrona;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collection;
 
 /**
- * Utility functions to help with using {@link java.lang.AutoCloseable} resources.
+ * Utility functions to help with using {@link java.lang.AutoCloseable} resources. If a null exception is passed
+ * then it is ignored.
  */
-public class CloseHelper
+public final class CloseHelper
 {
+    private CloseHelper()
+    {
+    }
+
     /**
      * Quietly close a {@link java.lang.AutoCloseable} dealing with nulls and exceptions.
      *
@@ -37,7 +41,7 @@ public class CloseHelper
                 closeable.close();
             }
         }
-        catch (final Exception ignore)
+        catch (final Throwable ignore)
         {
         }
     }
@@ -47,23 +51,22 @@ public class CloseHelper
      *
      * @param closeables to be closed.
      */
-    public static void quietCloseAll(final List<? extends AutoCloseable> closeables)
+    public static void quietCloseAll(final Collection<? extends AutoCloseable> closeables)
     {
-        if (closeables == null)
+        if (closeables == null || closeables.isEmpty())
         {
             return;
         }
 
-        for (int i = 0, size = closeables.size(); i < size; i++)
+        for (final AutoCloseable closeable : closeables)
         {
-            final AutoCloseable closeable = closeables.get(i);
             if (closeable != null)
             {
                 try
                 {
                     closeable.close();
                 }
-                catch (final Exception ignore)
+                catch (final Throwable ignore)
                 {
                 }
             }
@@ -77,7 +80,7 @@ public class CloseHelper
      */
     public static void quietCloseAll(final AutoCloseable... closeables)
     {
-        if (closeables == null)
+        if (closeables == null || closeables.length == 0)
         {
             return;
         }
@@ -90,7 +93,7 @@ public class CloseHelper
                 {
                     closeable.close();
                 }
-                catch (final Exception ignore)
+                catch (final Throwable ignore)
                 {
                 }
             }
@@ -112,70 +115,27 @@ public class CloseHelper
                 closeable.close();
             }
         }
-        catch (final Exception e)
+        catch (final Throwable ex)
         {
-            LangUtil.rethrowUnchecked(e);
+            LangUtil.rethrowUnchecked(ex);
         }
     }
 
     /**
-     * Close all closeables in closeables. If any of them throw then throw that exception.
+     * Close all provided closeables. If any of them throw then throw that exception.
      * If multiple closeables throw an exception when being closed, then throw an exception that contains
      * all of them as suppressed exceptions.
      *
      * @param closeables to be closed.
      */
-    public static void closeAll(final List<? extends AutoCloseable> closeables)
+    public static void closeAll(final Collection<? extends AutoCloseable> closeables)
     {
-        if (closeables == null)
+        if (closeables == null || closeables.isEmpty())
         {
             return;
         }
 
-        List<Exception> exceptions = null;
-        for (int i = 0, size = closeables.size(); i < size; i++)
-        {
-            final AutoCloseable closeable = closeables.get(i);
-            if (closeable != null)
-            {
-                try
-                {
-                    closeable.close();
-                }
-                catch (final Exception ex)
-                {
-                    if (exceptions == null)
-                    {
-                        exceptions = new ArrayList<>();
-                    }
-                    exceptions.add(ex);
-                }
-            }
-        }
-
-        if (exceptions != null)
-        {
-            final Exception exception = exceptions.remove(0);
-            exceptions.forEach(exception::addSuppressed);
-            LangUtil.rethrowUnchecked(exception);
-        }
-    }
-
-    /**
-     * Close all closeables in closeables. If any of them throw then throw that exception.
-     * If multiple closeables throw an exception when being closed, then throw an exception that contains
-     * all of them as suppressed exceptions.
-     *
-     * @param closeables to be closed.
-     */
-    public static void closeAll(final AutoCloseable... closeables)
-    {
-        if (closeables == null)
-        {
-            return;
-        }
-
-        List<Exception> exceptions = null;
+        Throwable error = null;
         for (final AutoCloseable closeable : closeables)
         {
             if (closeable != null)
@@ -184,22 +144,145 @@ public class CloseHelper
                 {
                     closeable.close();
                 }
-                catch (final Exception ex)
+                catch (final Throwable ex)
                 {
-                    if (exceptions == null)
+                    if (error == null)
                     {
-                        exceptions = new ArrayList<>();
+                        error = ex;
                     }
-                    exceptions.add(ex);
+                    else
+                    {
+                        error.addSuppressed(ex);
+                    }
                 }
             }
         }
 
-        if (exceptions != null)
+        if (error != null)
         {
-            final Exception exception = exceptions.remove(0);
-            exceptions.forEach(exception::addSuppressed);
-            LangUtil.rethrowUnchecked(exception);
+            LangUtil.rethrowUnchecked(error);
+        }
+    }
+
+    /**
+     * Close all provided closeables. If any of them throw then throw that exception.
+     * If multiple closeables throw an exception when being closed, then throw an exception that contains
+     * all of them as suppressed exceptions.
+     *
+     * @param closeables to be closed.
+     */
+    public static void closeAll(final AutoCloseable... closeables)
+    {
+        if (closeables == null || closeables.length == 0)
+        {
+            return;
+        }
+
+        Throwable error = null;
+        for (final AutoCloseable closeable : closeables)
+        {
+            if (closeable != null)
+            {
+                try
+                {
+                    closeable.close();
+                }
+                catch (final Throwable ex)
+                {
+                    if (error == null)
+                    {
+                        error = ex;
+                    }
+                    else
+                    {
+                        error.addSuppressed(ex);
+                    }
+                }
+            }
+        }
+
+        if (error != null)
+        {
+            LangUtil.rethrowUnchecked(error);
+        }
+    }
+
+    /**
+     * Close a {@link java.lang.AutoCloseable} delegating exceptions to the {@link ErrorHandler}.
+     *
+     * @param errorHandler to delegate exceptions to.
+     * @param closeable    to be closed.
+     */
+    public static void close(final ErrorHandler errorHandler, final AutoCloseable closeable)
+    {
+        try
+        {
+            if (null != closeable)
+            {
+                closeable.close();
+            }
+        }
+        catch (final Throwable ex)
+        {
+            errorHandler.onError(ex);
+        }
+    }
+
+    /**
+     * Close all closeables and delegate exceptions to the {@link ErrorHandler}.
+     *
+     * @param errorHandler to delegate exceptions to.
+     * @param closeables   to be closed.
+     */
+    public static void closeAll(final ErrorHandler errorHandler, final Collection<? extends AutoCloseable> closeables)
+    {
+        if (closeables == null || closeables.isEmpty())
+        {
+            return;
+        }
+
+        for (final AutoCloseable closeable : closeables)
+        {
+            if (closeable != null)
+            {
+                try
+                {
+                    closeable.close();
+                }
+                catch (final Throwable ex)
+                {
+                    errorHandler.onError(ex);
+                }
+            }
+        }
+    }
+
+    /**
+     * Close all closeables and delegate exceptions to the {@link ErrorHandler}.
+     *
+     * @param errorHandler to delegate exceptions to.
+     * @param closeables   to be closed.
+     */
+    public static void closeAll(final ErrorHandler errorHandler, final AutoCloseable... closeables)
+    {
+        if (closeables == null || closeables.length == 0)
+        {
+            return;
+        }
+
+        for (final AutoCloseable closeable : closeables)
+        {
+            if (closeable != null)
+            {
+                try
+                {
+                    closeable.close();
+                }
+                catch (final Throwable ex)
+                {
+                    errorHandler.onError(ex);
+                }
+            }
         }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,15 @@
  */
 package org.agrona.concurrent.status;
 
-import static org.agrona.BitUtil.SIZE_OF_LONG;
-
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.UnsafeAccess;
 import org.agrona.concurrent.AtomicBuffer;
 
 import java.nio.ByteBuffer;
+import java.util.function.Consumer;
+
+import static org.agrona.BitUtil.SIZE_OF_LONG;
 
 /**
  * Atomic counter that is backed by an {@link AtomicBuffer} that can be read across threads and processes.
@@ -31,7 +34,7 @@ public class AtomicCounter implements AutoCloseable
     private final int id;
     private final long addressOffset;
     private final byte[] byteArray;
-    private final CountersManager countersManager;
+    private CountersManager countersManager;
 
     @SuppressWarnings({"FieldCanBeLocal", "unused"})
     private final ByteBuffer byteBuffer; // retained to keep the buffer from being GC'ed
@@ -77,6 +80,29 @@ public class AtomicCounter implements AutoCloseable
     }
 
     /**
+     * Disconnect from {@link CountersManager} if allocated so it can be closed without freeing the slot.
+     */
+    public void disconnectCountersManager()
+    {
+        countersManager = null;
+    }
+
+    /**
+     * Close counter and free the counter slot for reuse of connected to {@link CountersManager}.
+     */
+    public void close()
+    {
+        if (!isClosed)
+        {
+            isClosed = true;
+            if (null != countersManager)
+            {
+                countersManager.free(id);
+            }
+        }
+    }
+
+    /**
      * Has this counter been closed?
      *
      * @return true if this counter has already been closed.
@@ -84,6 +110,93 @@ public class AtomicCounter implements AutoCloseable
     public boolean isClosed()
     {
         return isClosed;
+    }
+
+    /**
+     * Return the label for the counter within the {@link CountersManager}.
+     *
+     * @return the label for the counter within the {@link CountersManager}.
+     */
+    public String label()
+    {
+        return null != countersManager ? countersManager.getCounterLabel(id) : null;
+    }
+
+    /**
+     * Update the label for the counter constructed with a {@link CountersManager}.
+     *
+     * @param newLabel for the counter with a {@link CountersManager}.
+     * @throws IllegalStateException is not constructed {@link CountersManager}.
+     */
+    public void updateLabel(final String newLabel)
+    {
+        if (null != countersManager)
+        {
+            countersManager.setCounterLabel(id, newLabel);
+        }
+        else
+        {
+            throw new IllegalStateException("Not constructed with CountersManager");
+        }
+    }
+
+    /**
+     * Append to the label for a counter constructed with a {@link CountersManager}.
+     *
+     * @param suffix for the counter within a {@link CountersManager}.
+     * @return this for a fluent API.
+     * @throws IllegalStateException is not constructed {@link CountersManager}.
+     */
+    public AtomicCounter appendToLabel(final String suffix)
+    {
+        if (null != countersManager)
+        {
+            countersManager.appendToLabel(id, suffix);
+        }
+        else
+        {
+            throw new IllegalStateException("Not constructed with CountersManager");
+        }
+
+        return this;
+    }
+
+    /**
+     * Update the key for a counter constructed with a {@link CountersManager}.
+     *
+     * @param keyFunc callback to use to update the counter's key
+     * @throws IllegalStateException is not constructed {@link CountersManager}.
+     */
+    public void updateKey(final Consumer<MutableDirectBuffer> keyFunc)
+    {
+        if (null != countersManager)
+        {
+            countersManager.setCounterKey(id, keyFunc);
+        }
+        else
+        {
+            throw new IllegalStateException("Not constructed with CountersManager");
+        }
+    }
+
+    /**
+     * Update the key for a counter constructed with a {@link CountersManager}.
+     *
+     * @param keyBuffer contains key data to be copied into the counter.
+     * @param offset start of the key data within the keyBuffer
+     * @param length length of the data within the keyBuffer (must be &lt;= {@link CountersReader#MAX_KEY_LENGTH})
+     * @throws IllegalStateException is not constructed {@link CountersManager}.
+     */
+    public void updateKey(final DirectBuffer keyBuffer, final int offset, final int length)
+    {
+        if (null != countersManager)
+        {
+            countersManager.setCounterKey(id, keyBuffer, offset, length);
+        }
+        else
+        {
+            throw new IllegalStateException("Not constructed with CountersManager");
+        }
     }
 
     /**
@@ -105,6 +218,29 @@ public class AtomicCounter implements AutoCloseable
     {
         final long currentValue = UnsafeAccess.UNSAFE.getLong(byteArray, addressOffset);
         UnsafeAccess.UNSAFE.putOrderedLong(byteArray, addressOffset, currentValue + 1);
+
+        return currentValue;
+    }
+
+    /**
+     * Perform an atomic decrement that will not lose updates across threads.
+     *
+     * @return the previous value of the counter
+     */
+    public long decrement()
+    {
+        return UnsafeAccess.UNSAFE.getAndAddLong(byteArray, addressOffset, -1);
+    }
+
+    /**
+     * Perform an atomic decrement that is not safe across threads.
+     *
+     * @return the previous value of the counter
+     */
+    public long decrementOrdered()
+    {
+        final long currentValue = UnsafeAccess.UNSAFE.getLong(byteArray, addressOffset);
+        UnsafeAccess.UNSAFE.putOrderedLong(byteArray, addressOffset, currentValue - 1);
 
         return currentValue;
     }
@@ -245,27 +381,13 @@ public class AtomicCounter implements AutoCloseable
         return updated;
     }
 
-    /**
-     * Free the counter slot for reuse.
-     */
-    public void close()
-    {
-        if (!isClosed)
-        {
-            isClosed = true;
-            if (null != countersManager)
-            {
-                countersManager.free(id);
-            }
-        }
-    }
-
     public String toString()
     {
         return "AtomicCounter{" +
             "isClosed=" + isClosed() +
             ", id=" + id +
-            ", value=" + get() +
+            ", value=" + (isClosed() ? -1 : get()) +
+            ", countersManager=" + countersManager +
             '}';
     }
 }

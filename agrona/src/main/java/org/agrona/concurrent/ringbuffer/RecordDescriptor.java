@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import static org.agrona.BitUtil.SIZE_OF_INT;
 /**
  * Description of the record structure for message framing in the a {@link RingBuffer}.
  */
-public class RecordDescriptor
+public final class RecordDescriptor
 {
     /**
      * Header length made up of fields for length, type, and then the encoded message.
@@ -45,6 +45,10 @@ public class RecordDescriptor
      * Alignment as a multiple of bytes for each record.
      */
     public static final int ALIGNMENT = HEADER_LENGTH;
+
+    private RecordDescriptor()
+    {
+    }
 
     /**
      * The offset from the beginning of a record at which the message length field begins.

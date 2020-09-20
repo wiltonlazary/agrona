@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,8 @@ package org.agrona;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.lang.reflect.InvocationTargetException;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
@@ -29,14 +30,12 @@ import java.util.function.BiConsumer;
 
 import static java.nio.channels.FileChannel.MapMode.READ_ONLY;
 import static java.nio.channels.FileChannel.MapMode.READ_WRITE;
-import static java.nio.file.StandardOpenOption.CREATE_NEW;
-import static java.nio.file.StandardOpenOption.READ;
-import static java.nio.file.StandardOpenOption.WRITE;
+import static java.nio.file.StandardOpenOption.*;
 
 /**
  * Collection of IO utilities for dealing with files, especially mapping and un-mapping.
  */
-public class IoUtil
+public final class IoUtil
 {
     /**
      * Size in bytes of a file page.
@@ -50,19 +49,37 @@ public class IoUtil
 
     static class MappingMethods
     {
-        static final Method MAP_ADDRESS;
-        static final Method UNMAP_ADDRESS;
-        static final Method UNMAP_BUFFER;
+        static final MethodHandle MAP_ADDRESS;
+        static final MethodHandle MAP_WITH_SYNC_ADDRESS;
+        static final MethodHandle UNMAP_ADDRESS;
 
         static
         {
             try
             {
                 final Class<?> fileChannelClass = Class.forName("sun.nio.ch.FileChannelImpl");
+                final MethodHandles.Lookup lookup = MethodHandles.lookup();
 
-                MAP_ADDRESS = getFileChannelMethod(fileChannelClass, "map0", int.class, long.class, long.class);
-                UNMAP_ADDRESS = getFileChannelMethod(fileChannelClass, "unmap0", long.class, long.class);
-                UNMAP_BUFFER = getFileChannelMethod(fileChannelClass, "unmap", MappedByteBuffer.class);
+                MethodHandle mapAddress;
+                MethodHandle mapWithSyncAddress;
+                try
+                {
+                    mapAddress = lookup.unreflect(getFileChannelMethod(
+                        fileChannelClass, "map0", int.class, long.class, long.class));
+                    mapWithSyncAddress = null;
+                }
+                catch (final Exception ex)
+                {
+                    mapAddress = null;
+                    mapWithSyncAddress = lookup.unreflect(getFileChannelMethod(
+                        fileChannelClass, "map0", int.class, long.class, long.class, boolean.class));
+                }
+
+                MAP_ADDRESS = mapAddress;
+                MAP_WITH_SYNC_ADDRESS = mapWithSyncAddress;
+
+                UNMAP_ADDRESS = lookup.unreflect(getFileChannelMethod(
+                    fileChannelClass, "unmap0", long.class, long.class));
             }
             catch (final Exception ex)
             {
@@ -79,6 +96,10 @@ public class IoUtil
 
             return method;
         }
+    }
+
+    private IoUtil()
+    {
     }
 
     /**
@@ -137,6 +158,11 @@ public class IoUtil
      */
     public static void delete(final File file, final boolean ignoreFailures)
     {
+        if (!file.exists())
+        {
+            return;
+        }
+
         if (file.isDirectory())
         {
             final File[] files = file.listFiles();
@@ -158,6 +184,44 @@ public class IoUtil
             catch (final IOException ex)
             {
                 LangUtil.rethrowUnchecked(ex);
+            }
+        }
+    }
+
+    /**
+     * Recursively delete a file or directory tree.
+     *
+     * @param file         to be deleted.
+     * @param errorHandler to delegate errors to on exception.
+     */
+    public static void delete(final File file, final ErrorHandler errorHandler)
+    {
+        if (!file.exists())
+        {
+            return;
+        }
+
+        if (file.isDirectory())
+        {
+            final File[] files = file.listFiles();
+            if (null != files)
+            {
+                for (final File f : files)
+                {
+                    delete(f, errorHandler);
+                }
+            }
+        }
+
+        if (!file.delete())
+        {
+            try
+            {
+                Files.delete(file.toPath());
+            }
+            catch (final Throwable ex)
+            {
+                errorHandler.onError(ex);
             }
         }
     }
@@ -210,16 +274,31 @@ public class IoUtil
      */
     public static void deleteIfExists(final File file)
     {
-        if (file.exists())
+        try
         {
-            try
-            {
-                Files.delete(file.toPath());
-            }
-            catch (final IOException ex)
-            {
-                LangUtil.rethrowUnchecked(ex);
-            }
+            Files.deleteIfExists(file.toPath());
+        }
+        catch (final IOException ex)
+        {
+            LangUtil.rethrowUnchecked(ex);
+        }
+    }
+
+    /**
+     * Delete file only if it already exists.
+     *
+     * @param file         to delete.
+     * @param errorHandler to delegate error to on exception.
+     */
+    public static void deleteIfExists(final File file, final ErrorHandler errorHandler)
+    {
+        try
+        {
+            Files.deleteIfExists(file.toPath());
+        }
+        catch (final Throwable ex)
+        {
+            errorHandler.onError(ex);
         }
     }
 
@@ -433,20 +512,11 @@ public class IoUtil
      * Unmap a {@link MappedByteBuffer} without waiting for the next GC cycle.
      *
      * @param buffer to be unmapped.
+     * @see BufferUtil#free(ByteBuffer)
      */
     public static void unmap(final MappedByteBuffer buffer)
     {
-        if (null != buffer)
-        {
-            try
-            {
-                MappingMethods.UNMAP_BUFFER.invoke(null, buffer);
-            }
-            catch (final Exception ex)
-            {
-                LangUtil.rethrowUnchecked(ex);
-            }
-        }
+        BufferUtil.free(buffer);
     }
 
     /**
@@ -463,9 +533,18 @@ public class IoUtil
     {
         try
         {
-            return (long)MappingMethods.MAP_ADDRESS.invoke(fileChannel, getMode(mode), offset, length);
+            if (null != MappingMethods.MAP_ADDRESS)
+            {
+                return (long)MappingMethods.MAP_ADDRESS.invoke(
+                    fileChannel, getMode(mode), offset, length);
+            }
+            else
+            {
+                return (long)MappingMethods.MAP_WITH_SYNC_ADDRESS.invoke(
+                    fileChannel, getMode(mode), offset, length, false);
+            }
         }
-        catch (final IllegalAccessException | InvocationTargetException ex)
+        catch (final Throwable ex)
         {
             LangUtil.rethrowUnchecked(ex);
         }
@@ -484,9 +563,9 @@ public class IoUtil
     {
         try
         {
-            MappingMethods.UNMAP_ADDRESS.invoke(fileChannel, address, length);
+            MappingMethods.UNMAP_ADDRESS.invoke(address, length);
         }
-        catch (final IllegalAccessException | InvocationTargetException ex)
+        catch (final Throwable ex)
         {
             LangUtil.rethrowUnchecked(ex);
         }
@@ -545,14 +624,7 @@ public class IoUtil
 
     private static String getFileMode(final FileChannel.MapMode mode)
     {
-        if (mode == READ_ONLY)
-        {
-            return "r";
-        }
-        else
-        {
-            return "rw";
-        }
+        return mode == READ_ONLY ? "r" : "rw";
     }
 
     private static int getMode(final FileChannel.MapMode mode)

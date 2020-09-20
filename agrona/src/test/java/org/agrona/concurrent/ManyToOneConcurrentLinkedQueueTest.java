@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,14 +15,15 @@
  */
 package org.agrona.concurrent;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.Queue;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class ManyToOneConcurrentLinkedQueueTest
 {
@@ -115,12 +116,13 @@ public class ManyToOneConcurrentLinkedQueueTest
         assertThat(queue.toString(), is("{0, 1, 2, 3, 4}"));
     }
 
-    @Test(timeout = 10000)
+    @Test
+    @Timeout(10)
     public void shouldTransferConcurrently()
     {
         final int count = 1_000_000;
         final int numThreads = 2;
-        final Executor executor = Executors.newFixedThreadPool(numThreads);
+        final ExecutorService executor = Executors.newFixedThreadPool(numThreads);
         final Runnable producer =
             () ->
             {
@@ -139,10 +141,11 @@ public class ManyToOneConcurrentLinkedQueueTest
         {
             while (null == queue.poll())
             {
-                // busy spin
+                Thread.yield();
             }
         }
 
+        executor.shutdown();
         assertTrue(queue.isEmpty());
     }
 }

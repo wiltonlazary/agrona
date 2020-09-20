@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import org.agrona.generation.DoNotSub;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
 import static java.util.Objects.requireNonNull;
@@ -187,14 +188,22 @@ public class Int2ObjectHashMap<V>
     {
         boolean found = false;
         final Object val = mapNullValue(value);
+
         if (null != val)
         {
-            for (final Object v : values)
+            @DoNotSub int remaining =
+                Int2ObjectHashMap.this.size;
+
+            for (@DoNotSub int i = 0, length = values.length; remaining > 0 && i < length; i++)
             {
-                if (val.equals(v))
+                if (null != values[i])
                 {
-                    found = true;
-                    break;
+                    if (val.equals(values[i]))
+                    {
+                        found = true;
+                        break;
+                    }
+                    --remaining;
                 }
             }
         }
@@ -535,13 +544,13 @@ public class Int2ObjectHashMap<V>
      */
     public V replace(final int key, final V value)
     {
-        V curValue = get(key);
-        if (curValue != null)
+        V currentValue = get(key);
+        if (currentValue != null)
         {
-            curValue = put(key, value);
+            currentValue = put(key, value);
         }
 
-        return curValue;
+        return currentValue;
     }
 
     /**
@@ -725,6 +734,21 @@ public class Int2ObjectHashMap<V>
         {
             Int2ObjectHashMap.this.clear();
         }
+
+        public void forEach(final Consumer<? super V> action)
+        {
+            @DoNotSub int remaining =
+                Int2ObjectHashMap.this.size;
+
+            for (@DoNotSub int i = 0, length = values.length; remaining > 0 && i < length; i++)
+            {
+                if (null != values[i])
+                {
+                    action.accept(unmapNullValue(values[i]));
+                    --remaining;
+                }
+            }
+        }
     }
 
     /**
@@ -764,10 +788,50 @@ public class Int2ObjectHashMap<V>
          */
         public boolean contains(final Object o)
         {
-            final Entry entry = (Entry)o;
+            if (!(o instanceof Entry))
+            {
+                return false;
+            }
+
+            final Entry<?, ?> entry = (Entry<?, ?>)o;
             final int key = (Integer)entry.getKey();
             final V value = getMapped(key);
             return value != null && value.equals(mapNullValue(entry.getValue()));
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        public Object[] toArray()
+        {
+            return toArray(new Object[size()]);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @SuppressWarnings("unchecked")
+        public <T> T[] toArray(final T[] a)
+        {
+            final T[] array = a.length >= size ?
+                a : (T[])java.lang.reflect.Array.newInstance(a.getClass().getComponentType(), size);
+            final EntryIterator it = iterator();
+
+            for (@DoNotSub int i = 0; i < array.length; i++)
+            {
+                if (it.hasNext())
+                {
+                    it.next();
+                    array[i] = (T)it.allocateDuplicateEntry();
+                }
+                else
+                {
+                    array[i] = null;
+                    break;
+                }
+            }
+
+            return array;
         }
     }
 
@@ -918,49 +982,7 @@ public class Int2ObjectHashMap<V>
 
         private Entry<Integer, V> allocateDuplicateEntry()
         {
-            final int k = getIntKey();
-            final V v = getValue();
-
-            return new Entry<Integer, V>()
-            {
-                public Integer getKey()
-                {
-                    return k;
-                }
-
-                public V getValue()
-                {
-                    return v;
-                }
-
-                public V setValue(final V value)
-                {
-                    return Int2ObjectHashMap.this.put(k, value);
-                }
-
-                @DoNotSub public int hashCode()
-                {
-                    return Integer.hashCode(getIntKey()) ^ (v != null ? v.hashCode() : 0);
-                }
-
-                public boolean equals(final Object o)
-                {
-                    if (!(o instanceof Entry))
-                    {
-                        return false;
-                    }
-
-                    final Map.Entry e = (Entry)o;
-
-                    return (e.getKey() != null && e.getKey().equals(k)) &&
-                        ((e.getValue() == null && v == null) || e.getValue().equals(v));
-                }
-
-                public String toString()
-                {
-                    return k + "=" + v;
-                }
-            };
+            return new MapEntry(getIntKey(), getValue());
         }
 
         public Integer getKey()
@@ -994,6 +1016,56 @@ public class Int2ObjectHashMap<V>
             values[pos] = val;
 
             return (V)oldValue;
+        }
+
+        public final class MapEntry implements Entry<Integer, V>
+        {
+            private final int k;
+            private final V v;
+
+            public MapEntry(final int k, final V v)
+            {
+                this.k = k;
+                this.v = v;
+            }
+
+            public Integer getKey()
+            {
+                return k;
+            }
+
+            public V getValue()
+            {
+                return v;
+            }
+
+            public V setValue(final V value)
+            {
+                return Int2ObjectHashMap.this.put(k, value);
+            }
+
+            @DoNotSub public int hashCode()
+            {
+                return Integer.hashCode(getIntKey()) ^ (v != null ? v.hashCode() : 0);
+            }
+
+            public boolean equals(final Object o)
+            {
+                if (!(o instanceof Map.Entry))
+                {
+                    return false;
+                }
+
+                final Entry<?, ?> e = (Entry<?, ?>)o;
+
+                return (e.getKey() != null && e.getKey().equals(k)) &&
+                    ((e.getValue() == null && v == null) || e.getValue().equals(v));
+            }
+
+            public String toString()
+            {
+                return k + "=" + v;
+            }
         }
     }
 }

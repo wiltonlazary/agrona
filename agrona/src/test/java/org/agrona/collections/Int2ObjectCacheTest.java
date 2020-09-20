@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,17 +15,20 @@
  */
 package org.agrona.collections;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsEqual.equalTo;
-import static org.hamcrest.Matchers.greaterThan;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class Int2ObjectCacheTest
 {
@@ -162,7 +165,7 @@ public class Int2ObjectCacheTest
 
         final Collection<Integer> copyToSet = new HashSet<>();
 
-        for (final Int2ObjectCache.KeyIterator iter = cache.keySet().iterator(); iter.hasNext(); )
+        for (final Int2ObjectCache<String>.KeyIterator iter = cache.keySet().iterator(); iter.hasNext(); )
         {
             copyToSet.add(iter.nextInt());
         }
@@ -288,4 +291,3 @@ public class Int2ObjectCacheTest
         assertThat(cache.cacheHits(), is(0L));
     }
 }
-

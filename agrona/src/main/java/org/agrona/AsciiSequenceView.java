@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -95,7 +95,7 @@ public class AsciiSequenceView implements CharSequence
 
         if (end > length)
         {
-            throw new StringIndexOutOfBoundsException("end=" + end);
+            throw new StringIndexOutOfBoundsException("end=" + end + " length=" + length);
         }
 
         if (end - start < 0)
@@ -142,13 +142,19 @@ public class AsciiSequenceView implements CharSequence
      */
     public int getBytes(final MutableDirectBuffer dstBuffer, final int dstOffset)
     {
-        dstBuffer.putBytes(dstOffset, this.buffer, offset, length);
+        if (null == buffer || length <= 0)
+        {
+            return 0;
+        }
+
+        dstBuffer.putBytes(dstOffset, buffer, offset, length);
+
         return length;
     }
 
     public String toString()
     {
-        if (null == buffer)
+        if (null == buffer || length <= 0)
         {
             return "";
         }

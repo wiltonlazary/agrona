@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,9 +39,6 @@ import static org.agrona.AsciiEncoding.*;
  */
 public class ExpandableArrayBuffer implements MutableDirectBuffer
 {
-    private static final boolean SHOULD_PRINT_ARRAY_CONTENT =
-        !Boolean.getBoolean(DISABLE_ARRAY_CONTENT_PRINTOUT_PROP_NAME);
-
     /**
      * Maximum length to which the underlying buffer can grow. Some JVMs store state in the last few bytes.
      */
@@ -371,7 +368,12 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     public void putByte(final int index, final byte value)
     {
         ensureCapacity(index, SIZE_OF_BYTE);
+        byteArray[index] = value;
+    }
 
+    private void putByte0(final int index, final byte value)
+    {
+        ensureCapacity(index, SIZE_OF_BYTE);
         byteArray[index] = value;
     }
 
@@ -517,7 +519,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
 
     public String getStringAscii(final int index)
     {
-        boundsCheck0(index, SIZE_OF_INT);
+        boundsCheck0(index, STR_HEADER_LEN);
 
         final int length = UNSAFE.getInt(byteArray, ARRAY_BASE_OFFSET + index);
 
@@ -526,7 +528,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
 
     public int getStringAscii(final int index, final Appendable appendable)
     {
-        boundsCheck0(index, SIZE_OF_INT);
+        boundsCheck0(index, STR_HEADER_LEN);
 
         final int length = UNSAFE.getInt(byteArray, ARRAY_BASE_OFFSET + index);
 
@@ -535,7 +537,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
 
     public String getStringAscii(final int index, final ByteOrder byteOrder)
     {
-        boundsCheck0(index, SIZE_OF_INT);
+        boundsCheck0(index, STR_HEADER_LEN);
 
         int bits = UNSAFE.getInt(byteArray, ARRAY_BASE_OFFSET + index);
         if (NATIVE_BYTE_ORDER != byteOrder)
@@ -550,7 +552,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
 
     public int getStringAscii(final int index, final Appendable appendable, final ByteOrder byteOrder)
     {
-        boundsCheck0(index, SIZE_OF_INT);
+        boundsCheck0(index, STR_HEADER_LEN);
 
         int bits = UNSAFE.getInt(byteArray, ARRAY_BASE_OFFSET + index);
         if (NATIVE_BYTE_ORDER != byteOrder)
@@ -566,7 +568,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     public String getStringAscii(final int index, final int length)
     {
         final byte[] stringInBytes = new byte[length];
-        System.arraycopy(byteArray, index + SIZE_OF_INT, stringInBytes, 0, length);
+        System.arraycopy(byteArray, index + STR_HEADER_LEN, stringInBytes, 0, length);
 
         return new String(stringInBytes, US_ASCII);
     }
@@ -575,7 +577,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     {
         try
         {
-            for (int i = index + SIZE_OF_INT, limit = index + SIZE_OF_INT + length; i < limit; i++)
+            for (int i = index + STR_HEADER_LEN, limit = index + STR_HEADER_LEN + length; i < limit; i++)
             {
                 final char c = (char)(byteArray[i]);
                 appendable.append(c > 127 ? '?' : c);
@@ -593,7 +595,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     {
         final int length = value != null ? value.length() : 0;
 
-        ensureCapacity(index, length + SIZE_OF_INT);
+        ensureCapacity(index, length + STR_HEADER_LEN);
 
         UNSAFE.putInt(byteArray, ARRAY_BASE_OFFSET + index, length);
 
@@ -605,17 +607,17 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
                 c = '?';
             }
 
-            UNSAFE.putByte(byteArray, ARRAY_BASE_OFFSET + SIZE_OF_INT + index + i, (byte)c);
+            UNSAFE.putByte(byteArray, ARRAY_BASE_OFFSET + STR_HEADER_LEN + index + i, (byte)c);
         }
 
-        return SIZE_OF_INT + length;
+        return STR_HEADER_LEN + length;
     }
 
     public int putStringAscii(final int index, final String value, final ByteOrder byteOrder)
     {
         final int length = value != null ? value.length() : 0;
 
-        ensureCapacity(index, length + SIZE_OF_INT);
+        ensureCapacity(index, length + STR_HEADER_LEN);
 
         int bits = length;
         if (NATIVE_BYTE_ORDER != byteOrder)
@@ -633,10 +635,10 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
                 c = '?';
             }
 
-            UNSAFE.putByte(byteArray, ARRAY_BASE_OFFSET + SIZE_OF_INT + index + i, (byte)c);
+            UNSAFE.putByte(byteArray, ARRAY_BASE_OFFSET + STR_HEADER_LEN + index + i, (byte)c);
         }
 
-        return SIZE_OF_INT + length;
+        return STR_HEADER_LEN + length;
     }
 
     public String getStringWithoutLengthAscii(final int index, final int length)
@@ -707,7 +709,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
 
     public String getStringUtf8(final int index)
     {
-        boundsCheck0(index, SIZE_OF_INT);
+        boundsCheck0(index, STR_HEADER_LEN);
 
         final int length = UNSAFE.getInt(byteArray, ARRAY_BASE_OFFSET + index);
 
@@ -716,7 +718,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
 
     public String getStringUtf8(final int index, final ByteOrder byteOrder)
     {
-        boundsCheck0(index, SIZE_OF_INT);
+        boundsCheck0(index, STR_HEADER_LEN);
 
         int bits = UNSAFE.getInt(byteArray, ARRAY_BASE_OFFSET + index);
         if (NATIVE_BYTE_ORDER != byteOrder)
@@ -732,7 +734,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     public String getStringUtf8(final int index, final int length)
     {
         final byte[] stringInBytes = new byte[length];
-        System.arraycopy(byteArray, index + SIZE_OF_INT, stringInBytes, 0, length);
+        System.arraycopy(byteArray, index + STR_HEADER_LEN, stringInBytes, 0, length);
 
         return new String(stringInBytes, UTF_8);
     }
@@ -755,12 +757,12 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
             throw new IllegalArgumentException("Encoded string larger than maximum size: " + maxEncodedLength);
         }
 
-        ensureCapacity(index, SIZE_OF_INT + bytes.length);
+        ensureCapacity(index, STR_HEADER_LEN + bytes.length);
 
         UNSAFE.putInt(byteArray, ARRAY_BASE_OFFSET + index, bytes.length);
-        System.arraycopy(bytes, 0, byteArray, index + SIZE_OF_INT, bytes.length);
+        System.arraycopy(bytes, 0, byteArray, index + STR_HEADER_LEN, bytes.length);
 
-        return SIZE_OF_INT + bytes.length;
+        return STR_HEADER_LEN + bytes.length;
     }
 
     public int putStringUtf8(final int index, final String value, final ByteOrder byteOrder, final int maxEncodedLength)
@@ -771,7 +773,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
             throw new IllegalArgumentException("Encoded string larger than maximum size: " + maxEncodedLength);
         }
 
-        ensureCapacity(index, SIZE_OF_INT + bytes.length);
+        ensureCapacity(index, STR_HEADER_LEN + bytes.length);
 
         int bits = bytes.length;
         if (NATIVE_BYTE_ORDER != byteOrder)
@@ -780,9 +782,9 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
         }
 
         UNSAFE.putInt(byteArray, ARRAY_BASE_OFFSET + index, bits);
-        System.arraycopy(bytes, 0, byteArray, index + SIZE_OF_INT, bytes.length);
+        System.arraycopy(bytes, 0, byteArray, index + STR_HEADER_LEN, bytes.length);
 
-        return SIZE_OF_INT + bytes.length;
+        return STR_HEADER_LEN + bytes.length;
     }
 
     public String getStringWithoutLengthUtf8(final int index, final int length)
@@ -808,6 +810,11 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     {
         boundsCheck0(index, length);
 
+        if (length <= 0)
+        {
+            throw new AsciiNumberFormatException("empty string: index=" + index + " length=" + length);
+        }
+
         final int end = index + length;
         int tally = 0;
         for (int i = index; i < end; i++)
@@ -821,6 +828,11 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     public long parseNaturalLongAscii(final int index, final int length)
     {
         boundsCheck0(index, length);
+
+        if (length <= 0)
+        {
+            throw new AsciiNumberFormatException("empty string: index=" + index + " length=" + length);
+        }
 
         final int end = index + length;
         long tally = 0;
@@ -836,8 +848,17 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     {
         boundsCheck0(index, length);
 
+        if (length <= 0)
+        {
+            throw new AsciiNumberFormatException("empty string: index=" + index + " length=" + length);
+        }
+        else if (1 == length)
+        {
+            return AsciiEncoding.getDigit(index, byteArray[index]);
+        }
+
         final int endExclusive = index + length;
-        final int first = getByte(index);
+        final int first = byteArray[index];
         int i = index;
 
         if (first == MINUS_SIGN)
@@ -863,8 +884,17 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     {
         boundsCheck0(index, length);
 
+        if (length <= 0)
+        {
+            throw new AsciiNumberFormatException("empty string: index=" + index + " length=" + length);
+        }
+        else if (1 == length)
+        {
+            return AsciiEncoding.getDigit(index, byteArray[index]);
+        }
+
         final int endExclusive = index + length;
-        final int first = getByte(index);
+        final int first = byteArray[index];
         int i = index;
 
         if (first == MINUS_SIGN)
@@ -890,7 +920,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     {
         if (value == 0)
         {
-            putByte(index, ZERO);
+            putByte0(index, ZERO);
             return 1;
         }
 
@@ -905,7 +935,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
         int length = 1;
         if (value < 0)
         {
-            putByte(index, MINUS_SIGN);
+            putByte0(index, MINUS_SIGN);
             start++;
             length++;
             quotient = -quotient;
@@ -931,7 +961,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     {
         if (value == 0)
         {
-            putByte(index, ZERO);
+            putByte0(index, ZERO);
             return 1;
         }
 
@@ -961,12 +991,12 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
         {
             final int digit = remainder % 10;
             remainder = remainder / 10;
-            putByte(index, (byte)(ZERO + digit));
+            putByte0(index, (byte)(ZERO + digit));
         }
 
         if (remainder != 0)
         {
-            throw new NumberFormatException(String.format("Cannot write %d in %d bytes", value, length));
+            throw new NumberFormatException("Cannot write " + value + " in " + length + " bytes");
         }
     }
 
@@ -979,7 +1009,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
             index--;
             final int digit = remainder % 10;
             remainder = remainder / 10;
-            putByte(index, (byte)(ZERO + digit));
+            putByte0(index, (byte)(ZERO + digit));
         }
 
         return index;
@@ -989,7 +1019,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     {
         if (value == 0)
         {
-            putByte(index, ZERO);
+            putByte0(index, ZERO);
             return 1;
         }
 
@@ -1015,7 +1045,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     {
         if (value == 0)
         {
-            putByte(index, ZERO);
+            putByte0(index, ZERO);
             return 1;
         }
 
@@ -1030,7 +1060,7 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
         int length = 1;
         if (value < 0)
         {
-            putByte(index, MINUS_SIGN);
+            putByte0(index, MINUS_SIGN);
             start++;
             length++;
             quotient = -quotient;
@@ -1065,19 +1095,19 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
         final int currentArrayLength = byteArray.length;
         if (resultingPosition > currentArrayLength)
         {
-            if (currentArrayLength >= MAX_ARRAY_LENGTH)
+            if (resultingPosition > MAX_ARRAY_LENGTH)
             {
                 throw new IndexOutOfBoundsException(
                     "index=" + index + " length=" + length + " maxCapacity=" + MAX_ARRAY_LENGTH);
             }
 
-            byteArray = Arrays.copyOf(byteArray, calculateExpansion(currentArrayLength, (int)resultingPosition));
+            byteArray = Arrays.copyOf(byteArray, calculateExpansion(currentArrayLength, resultingPosition));
         }
     }
 
-    private int calculateExpansion(final int currentLength, final int requiredLength)
+    private int calculateExpansion(final int currentLength, final long requiredLength)
     {
-        long value = currentLength;
+        long value = Math.max(currentLength, INITIAL_CAPACITY);
 
         while (value < requiredLength)
         {
@@ -1169,7 +1199,8 @@ public class ExpandableArrayBuffer implements MutableDirectBuffer
     public String toString()
     {
         return "ExpandableArrayBuffer{" +
-            "byteArray=" + (SHOULD_PRINT_ARRAY_CONTENT ? Arrays.toString(byteArray) : byteArray) +
+            "byteArray=" + byteArray + // lgtm [java/print-array]
+            " byteArray.length" + (null == byteArray ? 0 : byteArray.length) +
             '}';
     }
 }

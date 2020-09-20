@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-2019 Real Logic Ltd.
+ * Copyright 2014-2020 Real Logic Limited.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,14 +48,14 @@ public class BiInt2ObjectMap<V> implements Serializable
     }
 
     /**
-     * Creates new values based upon keys
+     * Creates a new value based upon keys.
      *
-     * @param <V> type of the value
+     * @param <V> type of the value.
      */
     public interface EntryFunction<V>
     {
         /**
-         * A map entry
+         * A map entry.
          *
          * @param keyPartA for the key
          * @param keyPartB for the key
@@ -74,7 +74,7 @@ public class BiInt2ObjectMap<V> implements Serializable
     private Object[] values;
 
     /**
-     * Construct an empty map
+     * Construct an empty map.
      */
     public BiInt2ObjectMap()
     {
@@ -235,7 +235,6 @@ public class BiInt2ObjectMap<V> implements Serializable
     public V remove(final int keyPartA, final int keyPartB)
     {
         final long key = compoundKey(keyPartA, keyPartB);
-
         final int mask = values.length - 1;
         int index = Hashing.hash(key, mask);
 
@@ -290,11 +289,15 @@ public class BiInt2ObjectMap<V> implements Serializable
     @SuppressWarnings("unchecked")
     public void forEach(final Consumer<V> consumer)
     {
-        for (final Object value : values)
+        int remaining = size;
+
+        for (int i = 0, size = values.length; remaining > 0 && i < size; i++)
         {
+            final Object value = values[i];
             if (null != value)
             {
                 consumer.accept((V)value);
+                --remaining;
             }
         }
     }
@@ -307,7 +310,9 @@ public class BiInt2ObjectMap<V> implements Serializable
     @SuppressWarnings("unchecked")
     public void forEach(final EntryConsumer<V> consumer)
     {
-        for (int i = 0, size = values.length; i < size; i++)
+        int remaining = size;
+
+        for (int i = 0, size = values.length; remaining > 0 && i < size; i++)
         {
             final Object value = values[i];
             if (null != value)
@@ -317,6 +322,7 @@ public class BiInt2ObjectMap<V> implements Serializable
                 final int keyPartB = (int)(compoundKey & 0xFFFF_FFFFL);
 
                 consumer.accept(keyPartA, keyPartB, (V)value);
+                --remaining;
             }
         }
     }
